@@ -59,10 +59,9 @@ jobs:
           cd frontend
           npm run build
 
-      - name: Copy frontend build to static
+      - name: Verify static files
         run: |
-          rm -rf static
-          cp -r frontend/dist static
+          ls -la static/ | head -10
 
       - name: Install tauri-cli
         run: cargo install tauri-cli
