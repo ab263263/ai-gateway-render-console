@@ -299,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "ai-gateway"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -334,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "ai-gateway-tauri"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -351,6 +351,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]

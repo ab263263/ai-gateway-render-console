@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Button, Table, Modal, Form, Input, Select, Tag, Space, message, Popconfirm } from 'antd'
+import { Button, Table, Modal, Form, Input, Select, Tag, Space, message, Popconfirm, Card, Typography } from 'antd'
 import { PlusOutlined, DeleteOutlined, EditOutlined, KeyOutlined } from '@ant-design/icons'
 import { listPlatforms, createPlatform, updatePlatform, deletePlatform } from '../api'
 import { useAppContext } from '../ThemeContext'
 import { t } from '../i18n'
 import { platformPresets, getPresetName } from '../presets'
+
+const { Text } = Typography
 
 export default function Platforms() {
   const [platforms, setPlatforms] = useState<any[]>([])
@@ -89,36 +91,37 @@ export default function Platforms() {
       key: 'name',
       render: (v: string) => {
         const preset = platformPresets.find(p => p.name === v)
-        return <strong>{preset ? getPresetName(preset, locale) : v}</strong>
+        return <Text strong>{preset ? getPresetName(preset, locale) : v}</Text>
       },
     },
     {
       title: t(locale, 'type'),
       dataIndex: 'type',
       key: 'type',
-      render: (v: string) => <Tag color="blue">{v}</Tag>,
+      render: (v: string) => <Tag style={{ borderRadius: 4 }}>{v}</Tag>,
     },
-    { title: 'Base URL', dataIndex: 'base_url', key: 'base_url', ellipsis: true },
+    { title: t(locale, 'baseUrl'), dataIndex: 'base_url', key: 'base_url', ellipsis: true },
     {
       title: t(locale, 'status'),
       dataIndex: 'status',
       key: 'status',
-      render: (v: string) => <Tag color={v === 'Active' ? 'success' : 'default'}>{v === 'Active' ? t(locale, 'active') : v}</Tag>,
+      render: (v: string) => <Tag color={v === 'Active' ? 'success' : 'default'} style={{ borderRadius: 4 }}>{v === 'Active' ? t(locale, 'active') : v}</Tag>,
     },
     {
       title: 'API Key',
       dataIndex: 'api_key',
       key: 'api_key',
-      render: (v: string) => v ? `${v.slice(0, 8)}...` : '-',
+      render: (v: string) => v ? <Text code style={{ fontSize: 12 }}>{v.slice(0, 8)}...</Text> : <Text type="secondary">-</Text>,
     },
     {
       title: t(locale, 'action'),
       key: 'action',
+      width: 100,
       render: (_: any, record: any) => (
         <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>{t(locale, 'edit')}</Button>
+          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} />
           <Popconfirm title={t(locale, 'deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
-            <Button danger size="small" icon={<DeleteOutlined />}>{t(locale, 'delete')}</Button>
+            <Button type="text" danger size="small" icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
       ),
@@ -127,12 +130,14 @@ export default function Platforms() {
 
   return (
     <div>
-      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-        <span>{t(locale, 'platformDesc')}</span>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text type="secondary">{t(locale, 'platformDesc')}</Text>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t(locale, 'addPlatform')}</Button>
       </div>
 
-      <Table columns={columns} dataSource={platforms} rowKey="id" loading={loading} />
+      <Card styles={{ body: { padding: 0 } }}>
+        <Table columns={columns} dataSource={platforms} rowKey="id" loading={loading} pagination={{ pageSize: 20, showSizeChanger: false }} />
+      </Card>
 
       <Modal
         title={editItem ? t(locale, 'editPlatform') : t(locale, 'addPlatform')}
@@ -143,10 +148,10 @@ export default function Platforms() {
       >
         {!editItem && (
           <div style={{ marginBottom: 16 }}>
-            <div style={{ marginBottom: 8, fontWeight: 500 }}>{t(locale, 'quickPreset')}</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>{t(locale, 'quickPreset')}</Text>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
               {platformPresets.map((p) => (
-                <Tag key={p.name} color="processing" style={{ cursor: 'pointer' }} onClick={() => applyPreset(p)}>
+                <Tag key={p.name} color="processing" style={{ cursor: 'pointer', borderRadius: 4 }} onClick={() => applyPreset(p)}>
                   {getPresetName(p, locale)}
                 </Tag>
               ))}

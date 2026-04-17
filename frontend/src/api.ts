@@ -3,21 +3,25 @@ import axios from 'axios'
 // Detect Tauri desktop mode
 const isTauri = !!(window as any).__TAURI_INTERNALS__
 
-// In Tauri desktop mode, frontend is loaded from tauri:// protocol
-// We must use 127.0.0.1 (not localhost) to avoid mixed-content blocking
+// In Tauri mode, the WebView navigates to http://127.0.0.1:{port}
+// so the frontend and API share the same origin — use relative paths.
+// For standalone browser dev, Vite proxy handles /api -> localhost:1994.
 let configuredPort = 1994
 
 function buildBaseURL(): string {
-  if (isTauri) {
+  if (isTauri && window.location.protocol !== 'http:') {
+    // Still on tauri:// protocol (shouldn't happen with new approach, but fallback)
     return `http://127.0.0.1:${configuredPort}/api`
   }
+  // Same origin — use relative path
   return '/api'
 }
 
 function buildProxyBaseURL(): string {
-  if (isTauri) {
+  if (isTauri && window.location.protocol !== 'http:') {
     return `http://127.0.0.1:${configuredPort}`
   }
+  // Same origin
   return ''
 }
 
@@ -26,6 +30,14 @@ const api = axios.create({ baseURL: buildBaseURL() })
 // Fetch settings to get the actual configured port on startup
 export async function initConfig(): Promise<void> {
   if (!isTauri) return
+
+  // If already on http://127.0.0.1, just use relative paths — no port discovery needed
+  if (window.location.protocol === 'http:' && window.location.hostname === '127.0.0.1') {
+    api.defaults.baseURL = '/api'
+    return
+  }
+
+  // Fallback: still on tauri:// protocol, need to find the backend
   try {
     const resp = await fetch(`http://127.0.0.1:${configuredPort}/api/settings`)
     const data = await resp.json()
@@ -34,7 +46,6 @@ export async function initConfig(): Promise<void> {
       api.defaults.baseURL = buildBaseURL()
     }
   } catch {
-    // If default port fails, try common alternatives
     const ports = [18080, 8080, 3000]
     for (const p of ports) {
       try {
@@ -68,6 +79,7 @@ export const listModels = () => api.get('/models').then(r => r.data)
 export const createModel = (data: any) => api.post('/models', data).then(r => r.data)
 export const updateModel = (id: string, data: any) => api.put(`/models/${id}`, data).then(r => r.data)
 export const deleteModel = (id: string) => api.delete(`/models/${id}`)
+export const testModelConnection = (id: string) => api.post(`/models/${id}/test`).then(r => r.data)
 
 // Proxies
 export const listProxies = () => api.get('/proxies').then(r => r.data)

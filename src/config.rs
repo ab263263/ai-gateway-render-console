@@ -50,17 +50,25 @@ pub fn resolve_app_path(relative_path: &str) -> PathBuf {
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
             let resolved = exe_dir.join(&relative);
-            // Check if we're in a Tauri .app bundle (macOS)
-            // In that case, go up to the .app's Resources directory or use the exe's parent
             if resolved.exists() || exe_dir.join("config.toml").exists() {
                 return resolved;
             }
 
             // In macOS .app bundle, the exe is in Contents/MacOS/
-            // Resources and data should be relative to Contents/
+            // Tauri bundles resources with _up_ prefix for "../" paths
             if cfg!(target_os = "macos") {
                 if let Some(contents_dir) = exe_dir.parent() {
-                    let resources_resolved = contents_dir.join("Resources").join(&relative);
+                    let resources_dir = contents_dir.join("Resources");
+
+                    // Try Resources/_up_/ first (Tauri's ../ encoding)
+                    let up_dir = resources_dir.join("_up_");
+                    let up_resolved = up_dir.join(&relative);
+                    if up_resolved.exists() {
+                        return up_resolved;
+                    }
+
+                    // Try Resources/ directly
+                    let resources_resolved = resources_dir.join(&relative);
                     if resources_resolved.exists() {
                         return resources_resolved;
                     }
@@ -86,14 +94,26 @@ pub fn get_app_dir() -> PathBuf {
     // Try current exe directory first
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
+            // Direct: exe_dir/config.toml
             if exe_dir.join("config.toml").exists() {
                 return exe_dir.to_path_buf();
             }
-            // macOS .app bundle
+
+            // macOS .app bundle: exe is in Contents/MacOS/
             if cfg!(target_os = "macos") {
                 if let Some(contents_dir) = exe_dir.parent() {
-                    if contents_dir.join("Resources/config.toml").exists() {
-                        return contents_dir.join("Resources");
+                    let resources_dir = contents_dir.join("Resources");
+
+                    // Tauri bundles resources with _up_ prefix for "../" paths
+                    // e.g., "../config.toml" -> "Resources/_up_/config.toml"
+                    let up_dir = resources_dir.join("_up_");
+                    if up_dir.join("config.toml").exists() {
+                        return up_dir;
+                    }
+
+                    // Also check Resources/config.toml directly
+                    if resources_dir.join("config.toml").exists() {
+                        return resources_dir;
                     }
                 }
             }

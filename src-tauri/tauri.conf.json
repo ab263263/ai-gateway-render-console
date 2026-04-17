@@ -1,12 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "AI Gateway",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "identifier": "com.aigateway.app",
   "build": {
     "frontendDist": "../static",
-    "beforeDevCommand": "",
-    "beforeBuildCommand": "cd ../frontend && npm run build"
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "cd /Users/cjm/CodeBuddy/cc-client/frontend && npm run dev -- --port 1420",
+    "beforeBuildCommand": "cd /Users/cjm/CodeBuddy/cc-client/frontend && npm run build"
   },
   "app": {
     "windows": [
@@ -22,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' http://127.0.0.1:* http://localhost:* https://127.0.0.1:* https://localhost:*; img-src 'self' data: asset: https://asset.localhost http://127.0.0.1:*; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://127.0.0.1:* http://localhost:*; connect-src 'self' http://127.0.0.1:* http://localhost:* https://127.0.0.1:* https://localhost:* ws://127.0.0.1:* ws://localhost:*; img-src 'self' data: asset: https://asset.localhost http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline' 'unsafe-eval'; font-src 'self' data: http://127.0.0.1:* http://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://127.0.0.1:* http://localhost:*"
     }
   },
   "bundle": {

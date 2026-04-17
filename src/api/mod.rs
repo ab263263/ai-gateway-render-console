@@ -24,6 +24,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route("/models/{id}", web::get().to(model::get))
                 .route("/models/{id}", web::put().to(model::update))
                 .route("/models/{id}", web::delete().to(model::delete))
+                .route("/models/{id}/test", web::post().to(model::test_connection))
                 // 代理
                 .route("/proxies", web::get().to(proxy::list))
                 .route("/proxies", web::post().to(proxy::create))
