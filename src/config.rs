@@ -56,7 +56,10 @@ pub struct DatabaseConfig {
 pub struct SecurityConfig {
     pub encrypt_key: String,
     pub admin_token: String,
+    pub admin_username: String,
+    pub admin_password: String,
 }
+
 
 #[derive(Debug, Clone)]
 pub struct DefaultsConfig {
@@ -191,7 +194,10 @@ impl Default for AppConfig {
             security: SecurityConfig {
                 encrypt_key: "ai-gateway-default-key-change-me".to_string(),
                 admin_token: String::new(),
+                admin_username: "admin".to_string(),
+                admin_password: String::new(),
             },
+
             defaults: DefaultsConfig {
                 lb_strategy: "RoundRobin".to_string(),
                 max_retries: 2,
@@ -208,17 +214,37 @@ impl AppConfig {
         let app_dir = get_app_dir();
         let config_path = app_dir.join("config.toml");
 
+        let mut env_cfg = Self::default();
+        if let Ok(v) = std::env::var("HOST") { env_cfg.server.host = v; }
+        if let Ok(v) = std::env::var("PORT") { if let Ok(p) = v.parse::<u16>() { env_cfg.server.admin_port = p; } }
+        if let Ok(v) = std::env::var("LOG_LEVEL") { env_cfg.server.log_level = v; }
+        if let Ok(v) = std::env::var("SQL_DSN") {
+            if let Some(path) = v.strip_prefix("sqlite:///") {
+                env_cfg.database.path = PathBuf::from(path);
+            }
+        }
+        if let Ok(v) = std::env::var("API_KEY_ENCRYPTION_KEY") { env_cfg.security.encrypt_key = v; }
+        if let Ok(v) = std::env::var("ADMIN_TOKEN") { env_cfg.security.admin_token = v; }
+        if let Ok(v) = std::env::var("ADMIN_USERNAME") { env_cfg.security.admin_username = v; }
+        if let Ok(v) = std::env::var("ADMIN_PASSWORD") { env_cfg.security.admin_password = v; }
+        if let Ok(v) = std::env::var("REQUEST_TIMEOUT_SECS") { if let Ok(n) = v.parse::<u64>() { env_cfg.defaults.request_timeout_secs = n; } }
+        if let Ok(v) = std::env::var("TEST_CONNECTION_TIMEOUT_SECS") { if let Ok(n) = v.parse::<u64>() { env_cfg.defaults.test_connection_timeout_secs = n; } }
+        if let Ok(v) = std::env::var("MAX_RETRIES") { if let Ok(n) = v.parse::<u32>() { env_cfg.defaults.max_retries = n; } }
+
         if config_path.exists() {
+
             match std::fs::read_to_string(&config_path) {
                 Ok(content) => {
                     let value: toml::Value = match toml::from_str(&content) {
                         Ok(v) => v,
                         Err(e) => {
-                            tracing::error!("Failed to parse config.toml: {}, using defaults", e);
-                            return Self::default();
+                            tracing::error!("Failed to parse config.toml: {}, using env/defaults", e);
+                            return env_cfg;
+
                         }
                     };
-                    let mut config = Self::default();
+                    let mut config = env_cfg.clone();
+
                     if let Some(server) = value.get("server") {
                         if let Some(v) = server.get("host").and_then(|v| v.as_str()) {
                             config.server.host = v.to_string();
@@ -242,7 +268,14 @@ impl AppConfig {
                         if let Some(v) = sec.get("admin_token").and_then(|v| v.as_str()) {
                             config.security.admin_token = v.to_string();
                         }
+                        if let Some(v) = sec.get("admin_username").and_then(|v| v.as_str()) {
+                            config.security.admin_username = v.to_string();
+                        }
+                        if let Some(v) = sec.get("admin_password").and_then(|v| v.as_str()) {
+                            config.security.admin_password = v.to_string();
+                        }
                     }
+
                     if let Some(def) = value.get("defaults") {
                         if let Some(v) = def.get("lb_strategy").and_then(|v| v.as_str()) {
                             config.defaults.lb_strategy = v.to_string();
@@ -263,8 +296,9 @@ impl AppConfig {
                     config
                 }
                 Err(e) => {
-                    tracing::error!("Failed to read config.toml: {}, using defaults", e);
-                    Self::default()
+                    tracing::error!("Failed to read config.toml: {}, using env/defaults", e);
+                    env_cfg
+
                 }
             }
         } else {
@@ -307,8 +341,11 @@ path = "{}"
 [security]
 encrypt_key = "{}"
 admin_token = "{}"
+admin_username = "{}"
+admin_password = "{}"
 
 [defaults]
+
 lb_strategy = "{}"
 max_retries = {}
 retry_backoff_ms = {}
@@ -321,7 +358,10 @@ test_connection_timeout_secs = {}
             self.database.path.display(),
             self.security.encrypt_key,
             self.security.admin_token,
+            self.security.admin_username,
+            self.security.admin_password,
             self.defaults.lb_strategy,
+
             self.defaults.max_retries,
             self.defaults.retry_backoff_ms,
             self.defaults.request_timeout_secs,

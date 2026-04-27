@@ -1,0 +1,8 @@
+target
+node_modules
+frontend/node_modules
+.git
+src-tauri/target
+*.log
+data
+static

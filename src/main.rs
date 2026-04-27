@@ -1,12 +1,35 @@
 use actix_cors::Cors;
-use actix_web::{web, App, HttpServer, HttpResponse, middleware};
+use actix_web::{web, App, HttpServer, HttpResponse, middleware, http::header};
 use actix_files as actix_files;
 use std::sync::Arc;
 use parking_lot::RwLock;
+use base64::Engine as _;
+
 
 use ai_gateway::proxy::handler::ProxyState;
 use ai_gateway::lb::BackendSelector;
 use ai_gateway::api::settings::SharedAppConfig;
+
+fn is_admin_authorized(auth_header: Option<&header::HeaderValue>, username: &str, password: &str) -> bool {
+    let Some(value) = auth_header.and_then(|v| v.to_str().ok()) else {
+        return false;
+    };
+
+    let Some(encoded) = value.strip_prefix("Basic ") else {
+        return false;
+    };
+
+    let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(encoded) else {
+        return false;
+    };
+
+    let Ok(decoded_str) = String::from_utf8(decoded) else {
+        return false;
+    };
+
+    decoded_str == format!("{}:{}", username, password)
+}
+
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -45,13 +68,41 @@ async fn main() -> std::io::Result<()> {
     let static_dir = app_config.static_dir();
     let host = app_config.server.host.clone();
     let admin_port = app_config.server.admin_port;
+    let admin_username = app_config.security.admin_username.clone();
+    let admin_password = app_config.security.admin_password.clone();
 
     HttpServer::new(move || {
+
         let cors = Cors::permissive();
 
         App::new()
             .wrap(cors)
             .wrap(middleware::Logger::default())
+            .wrap_fn({
+                let admin_username = admin_username.clone();
+                let admin_password = admin_password.clone();
+                move |req, srv| {
+                    let path = req.path().to_string();
+                    let needs_admin_auth = !path.starts_with("/v1/") && path != "/health";
+                    let authorized = admin_username.is_empty() || admin_password.is_empty() || is_admin_authorized(req.headers().get(header::AUTHORIZATION), &admin_username, &admin_password);
+
+                    if !needs_admin_auth || authorized {
+                        let fut = srv.call(req);
+                        Box::pin(async move {
+                            let res = fut.await?;
+                            Ok(res.map_into_left_body())
+                        })
+                    } else {
+                        Box::pin(async move {
+                            let response = HttpResponse::Unauthorized()
+                                .insert_header((header::WWW_AUTHENTICATE, "Basic realm=\"AI Gateway Admin\""))
+                                .finish();
+                            Ok(req.into_response(response).map_into_right_body())
+                        })
+                    }
+                }
+            })
+
             .app_data(web::Data::new(db_pool.clone()))
             .app_data(web::Data::new(proxy_state.clone()))
             .app_data(web::Data::new(shared_config.clone()))
