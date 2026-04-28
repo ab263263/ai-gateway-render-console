@@ -124,10 +124,33 @@
   - 显示批量巡检结构化结果表
 - 前端构建已通过，下一步需要继续完成后端接口部署验证与“快速组池”入口
 
-### 14. 当前下一步
-- 推送并验证 `probe-model` 接口上线
-- 升级虚拟模型页，加入更直观的“快速组池”入口
-- 后续继续接入 Grok 第三方兼容 API 到平台预设和恢复脚本
+### 15. Render 构建链已打通 & 号池控制台第一版部署中
+- `Build Render Deployment` 运行 `25067139981` 已首次转为 `success`，说明 Render 上 Docker 直编 Rust 后端链路已经打通。
+- 随后已推送号池/中转池控制台第一版提交：
+  - `f023c4a` `feat: start pool console v1 probe workflow`
+- 本次内容包含：
+  - `probe-model` 结构化探测接口入口
+  - ChatTest 第一版结构化结果面板与批量巡检表
+  - `POOL_CONSOLE_SPEC.md`
+  - `DEVLOG.md` 持续开发日志
+- 当前 `Build Render Deployment` 新运行 `25070090617` 正在进行，待完成后需要立刻验证：
+  - `/api/platforms/{id}/probe-model`
+  - ChatTest 页面结构化结果展示
+  - 批量巡检结果表
+
+### 16. 当前下一步
+- 等 `25070090617` 完成后立即做线上验证
+- 若接口正常，继续推进“快速组池”入口
+- 若异常，按日志继续修复并保持 DEVLOG / memory 同步
+
+### 17. 协议策略补充说明
+- 当前项目在产品层面将继续定位为“OpenAI 兼容中转号池 / 中转池控制台”，优先把第三方 OpenAI 兼容中转的接入、巡检、批量测试、轮询池做强。
+- 同时保留并持续支持 Anthropic Messages API：
+  - OpenAI SDK → `POST /v1/chat/completions`
+  - Anthropic SDK → `POST /v1/messages`
+- 后续号池控制台的巡检结果与配置能力，也需要逐步区分 OpenAI chat 路径与 Anthropic messages 路径，而不是只围绕一种协议实现。
+
+
 
 
 

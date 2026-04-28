@@ -28,7 +28,13 @@
 ### 1. 上游协议范围
 - 第一阶段主支持 **OpenAI Compatible** 中转平台
 - 重点兼容：`/v1/models`、`/v1/chat/completions`
-- Anthropic 等其他协议保留兼容能力，但不作为第一阶段设计中心
+- 同时保留并持续支持 **Anthropic Messages API**：`/v1/messages`
+- 也就是说，号池控制台的主场景是 OpenAI 兼容中转号池，但网关协议层必须继续同时兼容 OpenAI SDK 与 Anthropic SDK
+- 前端巡检/测试结果后续也要能区分：
+  - OpenAI chat 路径探测
+  - Anthropic messages 路径探测
+- Anthropic 等其他协议保留兼容能力，但第一阶段产品化设计仍以 OpenAI 兼容中转池为中心
+
 
 ### 2. 并发与多代理要求
 - 号池必须支持异步并发请求

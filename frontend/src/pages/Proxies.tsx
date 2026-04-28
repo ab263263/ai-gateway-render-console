@@ -36,7 +36,6 @@ export default function Proxies() {
   const [loading, setLoading] = useState(false)
   const { locale } = useAppContext()
 
-  // Detail drawer
   const [detailProxy, setDetailProxy] = useState<any>(null)
   const [detailRoute, setDetailRoute] = useState<any>(null)
   const [addBackendModalOpen, setAddBackendModalOpen] = useState(false)
@@ -45,17 +44,14 @@ export default function Proxies() {
   const [remoteModels, setRemoteModels] = useState<{ id: string; owned_by?: string }[]>([])
   const [fetchingRemote, setFetchingRemote] = useState(false)
 
-  // Edit proxy modal
   const [editProxyModalOpen, setEditProxyModalOpen] = useState(false)
   const [editProxyForm] = Form.useForm()
 
-  // Usage code modal
   const [usageModalOpen, setUsageModalOpen] = useState(false)
   const [usageProxy, setUsageProxy] = useState<any>(null)
   const [adminPort, setAdminPort] = useState<number>(1994)
   const [apiKeysList, setApiKeysList] = useState<any[]>([])
 
-  // Create modal: remote models per backend row
   const [createRemoteModels, setCreateRemoteModels] = useState<Record<number, { id: string; owned_by?: string }[]>>({})
   const [createFetching, setCreateFetching] = useState<Record<number, boolean>>({})
 
@@ -178,13 +174,11 @@ export default function Proxies() {
     return preset ? getPresetName(preset, locale) : plat.name
   }
 
-  // Get platform name by id (for preset matching)
   const getPlatformName = (id: string) => {
     const plat = platforms.find((p: any) => p.id === id)
     return plat?.name || ''
   }
 
-  // Get capabilities for a model from presets
   const getPresetCapabilities = (platformName: string, modelId: string): string[] => {
     const presetModels = getModelsForPlatform(platformName)
     const preset = presetModels.find(m => m.model_id === modelId)
@@ -231,15 +225,15 @@ export default function Proxies() {
     },
   ]
 
-  // Build usage code snippets
   const getUsageSnippets = (proxy: any) => {
-    const port = adminPort
-    const baseUrl = `http://localhost:${port}`
+    const isRemote = window.location.hostname !== '127.0.0.1' && window.location.hostname !== 'localhost'
+    const originBase = isRemote ? window.location.origin : `http://localhost:${adminPort}`
+    const apiBaseUrl = `${originBase}/v1`
     const relevantKey = apiKeysList.find((k: any) => !k.proxy_id) || apiKeysList.find((k: any) => k.proxy_id === proxy.id)
     const token = relevantKey?.key || ''
     const modelName = proxy.name
 
-    const curlOpenai = `curl ${baseUrl}/v1/chat/completions \\
+    const curlOpenai = `curl ${apiBaseUrl}/chat/completions \\
   -H "Content-Type: application/json" \\
 ${token ? `  -H "Authorization: Bearer ${token}" \\
   ` : '  '}--data '{
@@ -248,7 +242,7 @@ ${token ? `  -H "Authorization: Bearer ${token}" \\
     "max_tokens": 100
   }'`
 
-    const curlAnthropic = `curl ${baseUrl}/v1/messages \\
+    const curlAnthropic = `curl ${apiBaseUrl}/messages \\
   -H "Content-Type: application/json" \\
   -H "anthropic-version: 2023-06-01" \\
 ${token ? `  -H "x-api-key: ${token}" \\
@@ -261,7 +255,8 @@ ${token ? `  -H "x-api-key: ${token}" \\
     const pythonOpenai = `import openai
 
 client = openai.OpenAI(
-    base_url="${baseUrl}/v1",${token ? `\n    api_key="${token}",` : ''}
+    base_url="${apiBaseUrl}",${token ? `
+    api_key="${token}",` : ''}
 )
 
 response = client.chat.completions.create(
@@ -274,7 +269,8 @@ print(response.choices[0].message.content)`
     const pythonAnthropic = `import anthropic
 
 client = anthropic.Anthropic(
-    base_url="${baseUrl}/v1/messages",${token ? `\n    api_key="${token}",` : ''}
+    base_url="${apiBaseUrl}/messages",${token ? `
+    api_key="${token}",` : ''}
 )
 
 message = client.messages.create(
@@ -287,7 +283,8 @@ print(message.content[0].text)`
     const nodeOpenai = `import OpenAI from 'openai';
 
 const client = new OpenAI({
-  baseURL: '${baseUrl}/v1',${token ? `\n  apiKey: '${token}',` : ''}
+  baseURL: '${apiBaseUrl}',${token ? `
+  apiKey: '${token}',` : ''}
 });
 
 const response = await client.chat.completions.create({
@@ -300,7 +297,8 @@ console.log(response.choices[0].message.content);`
     const nodeAnthropic = `import Anthropic from '@anthropic-ai/sdk';
 
 const client = new Anthropic({
-  baseURL: '${baseUrl}/v1/messages',${token ? `\n  apiKey: '${token}',` : ''}
+  baseURL: '${apiBaseUrl}/messages',${token ? `
+  apiKey: '${token}',` : ''}
 });
 
 const message = await client.messages.create({
@@ -310,28 +308,26 @@ const message = await client.messages.create({
 });
 console.log(message.content[0].text);`
 
+    const ccSwitchConfig = `Base URL: ${apiBaseUrl}
+API Key: ${token || '请先在 API Key 页面生成 sk-xxx'}
+Model: ${modelName}`
+
     return [
-      {
-        key: 'curl', label: 'cURL',
-        children: [
-          { key: 'openai', label: 'OpenAI', code: curlOpenai },
-          { key: 'anthropic', label: 'Anthropic', code: curlAnthropic },
-        ],
-      },
-      {
-        key: 'python', label: 'Python',
-        children: [
-          { key: 'openai', label: 'OpenAI', code: pythonOpenai },
-          { key: 'anthropic', label: 'Anthropic', code: pythonAnthropic },
-        ],
-      },
-      {
-        key: 'node', label: 'Node.js',
-        children: [
-          { key: 'openai', label: 'OpenAI', code: nodeOpenai },
-          { key: 'anthropic', label: 'Anthropic', code: nodeAnthropic },
-        ],
-      },
+      { key: 'curl', label: 'cURL', children: [
+        { key: 'openai', label: 'OpenAI', code: curlOpenai },
+        { key: 'anthropic', label: 'Anthropic', code: curlAnthropic },
+      ]},
+      { key: 'python', label: 'Python', children: [
+        { key: 'openai', label: 'OpenAI', code: pythonOpenai },
+        { key: 'anthropic', label: 'Anthropic', code: pythonAnthropic },
+      ]},
+      { key: 'node', label: 'Node.js', children: [
+        { key: 'openai', label: 'OpenAI', code: nodeOpenai },
+        { key: 'anthropic', label: 'Anthropic', code: nodeAnthropic },
+      ]},
+      { key: 'ccswitch', label: 'CC Switch', children: [
+        { key: 'config', label: '一键配置', code: ccSwitchConfig },
+      ]},
     ]
   }
 
@@ -346,7 +342,6 @@ console.log(message.content[0].text);`
         <Table columns={columns} dataSource={proxies} rowKey="id" loading={loading} pagination={{ pageSize: 20, showSizeChanger: false }} />
       </Card>
 
-      {/* Create Proxy (Virtual Model) */}
       <Modal title={t(locale, 'newProxy')} open={createModalOpen} onCancel={() => { setCreateModalOpen(false); setCreateRemoteModels({}); setCreateFetching({}) }} onOk={() => form.submit()} width={680}>
         <Form form={form} layout="vertical" onFinish={handleCreate}>
           <Form.Item name="name" label={t(locale, 'proxyName')} rules={[{ required: true }]}
@@ -378,7 +373,6 @@ console.log(message.content[0].text);`
                             onChange={async (value: string) => {
                               form.setFieldsValue({ backends: form.getFieldValue('backends')?.map((b: any, i: number) => i === name ? { ...b, model_id: undefined, capabilities: undefined } : b) })
                               setCreateRemoteModels(prev => ({ ...prev, [name]: [] }))
-                              // Auto-fetch remote models
                               setCreateFetching(prev => ({ ...prev, [name]: true }))
                               const models = await fetchRemote(value)
                               setCreateRemoteModels(prev => ({ ...prev, [name]: models }))
@@ -395,28 +389,25 @@ console.log(message.content[0].text);`
                             showSearch
                             optionFilterProp="label"
                             notFoundContent={createFetching[name] ? <LoadingOutlined /> : undefined}
-                            options={
-                              (() => {
-                                const backends = form.getFieldValue('backends') || []
-                                const pid = backends[name]?.platform_id
-                                const pName = getPlatformName(pid)
-                                // Combine remote models and preset models
-                                const remote = createRemoteModels[name] || []
-                                const presetMs = getModelsForPlatform(pName)
-                                const remoteIds = new Set(remote.map(m => m.id))
-                                const presetOnly = presetMs.filter(m => !remoteIds.has(m.model_id))
-                                const remoteOpts = remote.map(m => {
-                                  const pm = presetMs.find(p => p.model_id === m.id)
-                                  const display = pm ? `${locale === 'zh' ? pm.display_name_zh : pm.display_name} (${m.id})` : m.id
-                                  return { value: m.id, label: display }
-                                })
-                                const presetOpts = presetOnly.map(m => ({
-                                  value: m.model_id,
-                                  label: `${locale === 'zh' ? m.display_name_zh : m.display_name} (${m.model_id})`,
-                                }))
-                                return [...remoteOpts, ...presetOpts]
-                              })()
-                            }
+                            options={(() => {
+                              const backends = form.getFieldValue('backends') || []
+                              const pid = backends[name]?.platform_id
+                              const pName = getPlatformName(pid)
+                              const remote = createRemoteModels[name] || []
+                              const presetMs = getModelsForPlatform(pName)
+                              const remoteIds = new Set(remote.map(m => m.id))
+                              const presetOnly = presetMs.filter(m => !remoteIds.has(m.model_id))
+                              const remoteOpts = remote.map(m => {
+                                const pm = presetMs.find(p => p.model_id === m.id)
+                                const display = pm ? `${locale === 'zh' ? pm.display_name_zh : pm.display_name} (${m.id})` : m.id
+                                return { value: m.id, label: display }
+                              })
+                              const presetOpts = presetOnly.map(m => ({
+                                value: m.model_id,
+                                label: `${locale === 'zh' ? m.display_name_zh : m.display_name} (${m.model_id})`,
+                              }))
+                              return [...remoteOpts, ...presetOpts]
+                            })()}
                             onChange={(value: string) => {
                               const backends = form.getFieldValue('backends') || []
                               const pid = backends[name]?.platform_id
@@ -443,13 +434,7 @@ console.log(message.content[0].text);`
                       </Col>
                       <Col span={8}>
                         <Form.Item {...rest} name={[name, 'capabilities']} style={{ marginBottom: 0 }}>
-                          <Select
-                            mode="multiple"
-                            size="small"
-                            placeholder={t(locale, 'capabilities')}
-                            style={{ width: '100%' }}
-                            options={CAPABILITY_OPTIONS.map(c => ({ value: c.value, label: locale === 'zh' ? c.labelZh : c.labelEn }))}
-                          />
+                          <Select mode="multiple" size="small" placeholder={t(locale, 'capabilities')} style={{ width: '100%' }} options={CAPABILITY_OPTIONS.map(c => ({ value: c.value, label: locale === 'zh' ? c.labelZh : c.labelEn }))} />
                         </Form.Item>
                       </Col>
                     </Row>
@@ -462,14 +447,7 @@ console.log(message.content[0].text);`
         </Form>
       </Modal>
 
-      {/* Usage Code Modal */}
-      <Modal
-        title={`${t(locale, 'usageCode')} - ${usageProxy?.name || ''}`}
-        open={usageModalOpen}
-        onCancel={() => setUsageModalOpen(false)}
-        footer={null}
-        width={720}
-      >
+      <Modal title={`${t(locale, 'usageCode')} - ${usageProxy?.name || ''}`} open={usageModalOpen} onCancel={() => setUsageModalOpen(false)} footer={null} width={720}>
         {usageProxy && (
           <div>
             <Tabs items={getUsageSnippets(usageProxy).map(lang => ({
@@ -514,7 +492,6 @@ console.log(message.content[0].text);`
         )}
       </Modal>
 
-      {/* Proxy Detail Drawer */}
       <Drawer title={`${t(locale, 'proxyConfig')} - ${detailProxy?.name || ''}`} open={!!detailProxy} onClose={() => { setDetailProxy(null); setDetailRoute(null) }} width={720}>
         {detailProxy && (
           <div>
@@ -564,7 +541,6 @@ console.log(message.content[0].text);`
         )}
       </Drawer>
 
-      {/* Edit Proxy Modal */}
       <Modal title={t(locale, 'editProxyInfo')} open={editProxyModalOpen} onCancel={() => setEditProxyModalOpen(false)} onOk={() => editProxyForm.submit()}>
         <Form form={editProxyForm} layout="vertical" onFinish={handleEditProxy}>
           <Form.Item name="name" label={t(locale, 'proxyName')} rules={[{ required: true }]}>
@@ -573,7 +549,6 @@ console.log(message.content[0].text);`
         </Form>
       </Modal>
 
-      {/* Add Backend */}
       <Modal title={t(locale, 'addBackendModel')} open={addBackendModalOpen} onCancel={() => { setAddBackendModalOpen(false); setSelectedBackendPlatformId(''); setRemoteModels([]) }} onOk={() => backendForm.submit()}>
         <Form form={backendForm} layout="vertical" onFinish={handleAddBackend}>
           <Form.Item name="platform_id" label={t(locale, 'platforms')} rules={[{ required: true }]}>
@@ -599,24 +574,22 @@ console.log(message.content[0].text);`
               optionFilterProp="label"
               notFoundContent={fetchingRemote ? <LoadingOutlined /> : undefined}
               placeholder={fetchingRemote ? t(locale, 'loading') : t(locale, 'selectModel')}
-              options={
-                (() => {
-                  const pName = getPlatformName(selectedBackendPlatformId)
-                  const presetMs = getModelsForPlatform(pName)
-                  const remoteIds = new Set(remoteModels.map(m => m.id))
-                  const presetOnly = presetMs.filter(m => !remoteIds.has(m.model_id))
-                  const remoteOpts = remoteModels.map(m => {
-                    const pm = presetMs.find(p => p.model_id === m.id)
-                    const display = pm ? `${locale === 'zh' ? pm.display_name_zh : pm.display_name} (${m.id})` : m.id
-                    return { value: m.id, label: display }
-                  })
-                  const presetOpts = presetOnly.map(m => ({
-                    value: m.model_id,
-                    label: `${locale === 'zh' ? m.display_name_zh : m.display_name} (${m.model_id})`,
-                  }))
-                  return [...remoteOpts, ...presetOpts]
-                })()
-              }
+              options={(() => {
+                const pName = getPlatformName(selectedBackendPlatformId)
+                const presetMs = getModelsForPlatform(pName)
+                const remoteIds = new Set(remoteModels.map(m => m.id))
+                const presetOnly = presetMs.filter(m => !remoteIds.has(m.model_id))
+                const remoteOpts = remoteModels.map(m => {
+                  const pm = presetMs.find(p => p.model_id === m.id)
+                  const display = pm ? `${locale === 'zh' ? pm.display_name_zh : pm.display_name} (${m.id})` : m.id
+                  return { value: m.id, label: display }
+                })
+                const presetOpts = presetOnly.map(m => ({
+                  value: m.model_id,
+                  label: `${locale === 'zh' ? m.display_name_zh : m.display_name} (${m.model_id})`,
+                }))
+                return [...remoteOpts, ...presetOpts]
+              })()}
               onChange={(value: string) => {
                 const pName = getPlatformName(selectedBackendPlatformId)
                 const caps = getPresetCapabilities(pName, value)
@@ -627,11 +600,7 @@ console.log(message.content[0].text);`
             />
           </Form.Item>
           <Form.Item name="capabilities" label={t(locale, 'capabilities')}>
-            <Select
-              mode="multiple"
-              placeholder={t(locale, 'selectCapabilities')}
-              options={CAPABILITY_OPTIONS.map(c => ({ value: c.value, label: locale === 'zh' ? c.labelZh : c.labelEn }))}
-            />
+            <Select mode="multiple" placeholder={t(locale, 'selectCapabilities')} options={CAPABILITY_OPTIONS.map(c => ({ value: c.value, label: locale === 'zh' ? c.labelZh : c.labelEn }))} />
           </Form.Item>
           <Form.Item name="weight" label={t(locale, 'weight')} initialValue={1}>
             <InputNumber min={1} />
