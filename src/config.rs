@@ -302,8 +302,8 @@ impl AppConfig {
                 }
             }
         } else {
-            let config = Self::default();
-            // Generate default config file in app directory
+            let config = env_cfg.clone();
+            // Generate default config file in app directory using env-resolved values
             if let Ok(toml_str) = config.to_toml_string() {
                 let _ = std::fs::write(&config_path, toml_str);
             }

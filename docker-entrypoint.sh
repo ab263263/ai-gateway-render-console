@@ -9,8 +9,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+APP_HOST="${HOST:-127.0.0.1}"
+APP_PORT="${PORT:-1994}"
+
 for i in $(seq 1 60); do
-  if curl -fsS http://127.0.0.1:1994/health >/dev/null 2>&1; then
+  if curl -fsS "http://${APP_HOST}:${APP_PORT}/health" >/dev/null 2>&1; then
     break
   fi
   sleep 2

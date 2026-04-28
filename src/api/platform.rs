@@ -1,7 +1,50 @@
 use actix_web::{web, HttpResponse};
+use regex::Regex;
 use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::platform::*;
+
+fn extract_model_from_output(output: &str) -> Option<String> {
+    if output.trim().is_empty() {
+        return None;
+    }
+
+    let patterns = [
+        r"(?i)actual(?:ly)?\s+(?:hit|used|resolved)(?:\s+model(?:\s+name)?)?\s*(?:is|:)\s*([A-Za-z0-9][A-Za-z0-9._:/\- ]{1,120})",
+        r"(?i)实际命中(?:的)?模型(?:名)?(?:是|为|:)\s*([A-Za-z0-9][A-Za-z0-9._:/\- ]{1,120})",
+        r"(?i)命中模型(?:名)?(?:是|为|:)\s*([A-Za-z0-9][A-Za-z0-9._:/\- ]{1,120})",
+    ];
+
+    for pattern in patterns {
+        if let Ok(re) = Regex::new(pattern) {
+            if let Some(caps) = re.captures(output) {
+                if let Some(value) = caps.get(1) {
+                    let normalized = value.as_str().trim().trim_matches(|c: char| matches!(c, '。' | '.' | ',' | '，' | '：' | ':' | '"' | '\'' | '”' | '“' | ')' | '）')).trim().to_string();
+                    if !normalized.is_empty() {
+                        return Some(normalized);
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn resolve_actual_model(json_body: Option<&serde_json::Value>, output: &str) -> String {
+    let response_model = json_body
+        .and_then(|v| v.get("model"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+
+    if let Some(inferred) = extract_model_from_output(output) {
+        return inferred;
+    }
+
+    response_model
+}
 
 #[derive(Debug, serde::Deserialize)]
 pub struct PlatformChatTestRequest {
@@ -359,7 +402,6 @@ pub async fn probe_platform_model(
             let success = resp.status().is_success();
             let body_text = resp.text().await.unwrap_or_default();
             let json_body = serde_json::from_str::<serde_json::Value>(&body_text).ok();
-            let actual_model = json_body.as_ref().and_then(|v| v.get("model")).and_then(|v| v.as_str()).unwrap_or("").to_string();
             let output = json_body.as_ref()
                 .and_then(|v| v.get("choices"))
                 .and_then(|v| v.as_array())
@@ -369,6 +411,7 @@ pub async fn probe_platform_model(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+            let actual_model = resolve_actual_model(json_body.as_ref(), &output);
             let error_msg = json_body.as_ref()
                 .and_then(|v| v.get("error"))
                 .and_then(|e| e.get("message"))

@@ -24,7 +24,7 @@ WORKDIR /app
 COPY --from=backend-builder /app/target/release/ai-gateway /app/ai-gateway
 RUN chmod +x /app/ai-gateway
 
-COPY --from=frontend-builder /app/static /app/static
+COPY --from=frontend-builder /app/frontend/../static /app/static
 COPY config.toml /app/config.toml
 COPY scripts /app/scripts
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
