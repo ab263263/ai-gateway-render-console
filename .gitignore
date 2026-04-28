@@ -2,8 +2,9 @@
 /target/
 /src-tauri/target/
 /src-tauri/config.toml
-/dist/
+/dist/*.tar.gz
 /static/
+# dist/ai-gateway is kept - it's the pre-built binary for Render
 
 # Database
 *.db
