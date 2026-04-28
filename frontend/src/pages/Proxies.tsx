@@ -11,8 +11,9 @@ import {
   listProxies, createProxy, updateProxy, deleteProxy,
   listRoutes, createRoute, deleteRoute,
   listBackends, addBackend, deleteBackend,
-  listPlatforms, fetchRemoteModels, getSettings, listApiKeys as fetchApiKeys,
+  listPlatforms, fetchRemoteModels, probePlatformModel, getSettings, listApiKeys as fetchApiKeys,
 } from '../api'
+
 import { useAppContext } from '../ThemeContext'
 import { t } from '../i18n'
 import { getPresetName, platformPresets, getCapabilityLabel, getCapabilityColor, CAPABILITY_OPTIONS, getModelsForPlatform } from '../presets'
@@ -27,7 +28,23 @@ const LB_OPTIONS = [
   { value: 'LatencyBased', label: t('zh', 'latencyBased') },
 ]
 
+type QuickPoolCandidate = {
+  key: string
+  platform_id: string
+  platform_name: string
+  platform_type: string
+  model_id: string
+  source: 'remote' | 'preset'
+  capabilities: string[]
+  selected: boolean
+  probe_status: 'untested' | 'available' | 'mapped_model_mismatch' | 'cooldown' | 'unavailable'
+  probe_category?: string
+  probe_detail?: string
+  actual_model?: string
+}
+
 export default function Proxies() {
+
   const [proxies, setProxies] = useState<any[]>([])
   const [proxyRoutes, setProxyRoutes] = useState<Record<string, any>>({})
   const [platforms, setPlatforms] = useState<any[]>([])
@@ -54,8 +71,13 @@ export default function Proxies() {
 
   const [createRemoteModels, setCreateRemoteModels] = useState<Record<number, { id: string; owned_by?: string }[]>>({})
   const [createFetching, setCreateFetching] = useState<Record<number, boolean>>({})
+  const [quickPoolModelId, setQuickPoolModelId] = useState('')
+  const [quickPoolCandidates, setQuickPoolCandidates] = useState<QuickPoolCandidate[]>([])
+  const [quickPoolLoading, setQuickPoolLoading] = useState(false)
+  const [quickPoolProbing, setQuickPoolProbing] = useState(false)
 
   useEffect(() => { loadAll(); loadAdminPort() }, [])
+
 
   const loadAdminPort = async () => {
     try { const settings = await getSettings(); setAdminPort(settings.admin_port) } catch {}
@@ -185,7 +207,130 @@ export default function Proxies() {
     return preset?.capabilities || []
   }
 
+  const resetQuickPool = () => {
+    setQuickPoolModelId('')
+    setQuickPoolCandidates([])
+    setQuickPoolLoading(false)
+    setQuickPoolProbing(false)
+  }
+
+  const applyQuickPoolCandidates = (candidates: QuickPoolCandidate[]) => {
+    const backends = candidates
+      .filter(item => item.selected)
+      .map(item => ({
+        platform_id: item.platform_id,
+        model_id: item.model_id,
+        weight: 1,
+        priority: 0,
+        capabilities: item.capabilities,
+      }))
+
+    if (backends.length === 0) {
+      message.warning(t(locale, 'quickPoolNoCandidates'))
+      return
+    }
+
+    form.setFieldsValue({ backends })
+    setCreateRemoteModels({})
+    message.success(t(locale, 'quickPoolFillSuccess', String(backends.length)))
+  }
+
+  const handleScanQuickPoolCandidates = async () => {
+    const targetModelId = quickPoolModelId.trim()
+    if (!targetModelId) {
+      message.warning(t(locale, 'quickPoolNeedModelId'))
+      return
+    }
+
+    setQuickPoolLoading(true)
+    try {
+      const rows = await Promise.all(platforms.map(async (platform: any) => {
+        const presetModels = getModelsForPlatform(platform.name)
+        const presetMatch = presetModels.find(m => m.model_id.toLowerCase() === targetModelId.toLowerCase())
+        const remoteResult = await fetchRemoteModels(platform.id).catch(() => ({ models: [] }))
+        const remoteModels = Array.isArray(remoteResult?.models) ? remoteResult.models : []
+        const remoteMatch = remoteModels.find((m: any) => String(m.id).toLowerCase() === targetModelId.toLowerCase())
+        const matchedModelId = remoteMatch?.id || presetMatch?.model_id
+        if (!matchedModelId) return null
+
+        return {
+          key: `${platform.id}:${matchedModelId}`,
+          platform_id: platform.id,
+          platform_name: platform.name,
+          platform_type: platform.type || platform.platform_type || 'OpenAI',
+          model_id: matchedModelId,
+          source: remoteMatch ? 'remote' : 'preset',
+          capabilities: presetMatch?.capabilities || [],
+          selected: true,
+          probe_status: 'untested',
+        } satisfies QuickPoolCandidate
+      }))
+
+      const candidates = rows.filter(Boolean) as QuickPoolCandidate[]
+      setQuickPoolCandidates(candidates)
+      message.success(t(locale, 'quickPoolScanSuccess', String(candidates.length)))
+    } catch {
+      message.error(t(locale, 'loadFailed'))
+    }
+    setQuickPoolLoading(false)
+  }
+
+  const handleProbeQuickPoolCandidates = async () => {
+    if (quickPoolCandidates.length === 0) {
+      message.warning(t(locale, 'quickPoolNeedCandidates'))
+      return
+    }
+
+    setQuickPoolProbing(true)
+    try {
+      const nextCandidates = [...quickPoolCandidates]
+      for (let i = 0; i < nextCandidates.length; i += 1) {
+        const item = nextCandidates[i]
+        try {
+          const result = await probePlatformModel(item.platform_id, {
+            model_id: item.model_id,
+            message: '回复一句 OK，并带上你实际命中的模型名',
+            max_tokens: 64,
+          })
+          const category = result?.chat_probe?.category || ''
+          const probeStatus = category === 'mapped_model_mismatch'
+            ? 'mapped_model_mismatch'
+            : category === 'cooldown'
+              ? 'cooldown'
+              : result?.chat_probe?.success
+                ? 'available'
+                : 'unavailable'
+
+          nextCandidates[i] = {
+            ...item,
+            probe_status: probeStatus,
+            probe_category: category,
+            probe_detail: result?.chat_probe?.message || result?.models_probe?.error || '',
+            actual_model: result?.actual_model || '',
+            selected: probeStatus === 'available' || probeStatus === 'mapped_model_mismatch',
+          }
+        } catch (e: any) {
+          nextCandidates[i] = {
+            ...item,
+            probe_status: 'unavailable',
+            probe_category: 'platform_compat_issue',
+            probe_detail: e?.response?.data?.error?.message || e?.message || t(locale, 'testConnectionFailed'),
+            selected: false,
+          }
+        }
+        setQuickPoolCandidates([...nextCandidates])
+      }
+
+      const healthy = nextCandidates.filter(item => item.selected)
+      applyQuickPoolCandidates(healthy)
+      message.success(t(locale, 'quickPoolProbeSuccess', String(healthy.length)))
+    } finally {
+      setQuickPoolProbing(false)
+    }
+  }
+
   const columns = [
+
     {
       title: t(locale, 'name'),
       dataIndex: 'name',
@@ -342,16 +487,56 @@ Model: ${modelName}`
         <Table columns={columns} dataSource={proxies} rowKey="id" loading={loading} pagination={{ pageSize: 20, showSizeChanger: false }} />
       </Card>
 
-      <Modal title={t(locale, 'newProxy')} open={createModalOpen} onCancel={() => { setCreateModalOpen(false); setCreateRemoteModels({}); setCreateFetching({}) }} onOk={() => form.submit()} width={680}>
+      <Modal title={t(locale, 'newProxy')} open={createModalOpen} onCancel={() => { setCreateModalOpen(false); setCreateRemoteModels({}); setCreateFetching({}); resetQuickPool() }} onOk={() => form.submit()} width={860}>
         <Form form={form} layout="vertical" onFinish={handleCreate}>
           <Form.Item name="name" label={t(locale, 'proxyName')} rules={[{ required: true }]}
             extra={<Text type="secondary" style={{ fontSize: 12 }}>{t(locale, 'virtualModelPlaceholder')}</Text>}>
             <Input placeholder="qc480" />
           </Form.Item>
+          <Card size="small" title={t(locale, 'quickPool')} style={{ marginBottom: 16 }}>
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              <Text type="secondary">{t(locale, 'quickPoolDesc')}</Text>
+              <Row gutter={8}>
+                <Col span={12}>
+                  <Input
+                    value={quickPoolModelId}
+                    onChange={(e) => setQuickPoolModelId(e.target.value)}
+                    placeholder={t(locale, 'quickPoolModelIdPlaceholder')}
+                  />
+                </Col>
+                <Col span={12}>
+                  <Space wrap>
+                    <Button onClick={handleScanQuickPoolCandidates} loading={quickPoolLoading}>{t(locale, 'quickPoolLoadCandidates')}</Button>
+                    <Button type="primary" onClick={handleProbeQuickPoolCandidates} loading={quickPoolProbing} disabled={quickPoolCandidates.length === 0}>{t(locale, 'quickPoolProbeCandidates')}</Button>
+                    <Button onClick={() => applyQuickPoolCandidates(quickPoolCandidates)} disabled={quickPoolCandidates.length === 0}>{t(locale, 'quickPoolOnlyHealthy')}</Button>
+                  </Space>
+                </Col>
+              </Row>
+              {quickPoolCandidates.length === 0 ? (
+                <Text type="secondary">{t(locale, 'quickPoolNoCandidates')}</Text>
+              ) : (
+                <Table
+                  size="small"
+                  rowKey="key"
+                  pagination={false}
+                  dataSource={quickPoolCandidates}
+                  columns={[
+                    { title: t(locale, 'platforms'), dataIndex: 'platform_name', key: 'platform_name', render: (v: string) => <Tag>{v}</Tag> },
+                    { title: t(locale, 'modelId'), dataIndex: 'model_id', key: 'model_id', render: (v: string) => <Text code>{v}</Text> },
+                    { title: 'Source', dataIndex: 'source', key: 'source', width: 90, render: (v: string) => <Tag color={v === 'remote' ? 'blue' : 'default'}>{v}</Tag> },
+                    { title: t(locale, 'quickPoolProbeStatus'), dataIndex: 'probe_status', key: 'probe_status', width: 130, render: (v: string) => <Tag color={v === 'available' ? 'success' : v === 'mapped_model_mismatch' ? 'warning' : v === 'cooldown' ? 'processing' : v === 'untested' ? 'default' : 'error'}>{v}</Tag> },
+                    { title: t(locale, 'actualModel'), dataIndex: 'actual_model', key: 'actual_model', render: (v: string) => v ? <Text code>{v}</Text> : '-' },
+                    { title: t(locale, 'errorCategory'), dataIndex: 'probe_category', key: 'probe_category', render: (v: string) => v || '-' },
+                  ]}
+                />
+              )}
+            </Space>
+          </Card>
           <Form.Item name="lb_strategy" label={t(locale, 'lbStrategy')} initialValue="RoundRobin">
             <Select options={LB_OPTIONS} />
           </Form.Item>
           <Form.List name="backends" initialValue={[{}]} >
+
             {(fields, { add, remove }) => (
               <>
                 {fields.map(({ key, name, ...rest }) => (

@@ -143,12 +143,61 @@
 - 若接口正常，继续推进“快速组池”入口
 - 若异常，按日志继续修复并保持 DEVLOG / memory 同步
 
-### 17. 协议策略补充说明
-- 当前项目在产品层面将继续定位为“OpenAI 兼容中转号池 / 中转池控制台”，优先把第三方 OpenAI 兼容中转的接入、巡检、批量测试、轮询池做强。
-- 同时保留并持续支持 Anthropic Messages API：
-  - OpenAI SDK → `POST /v1/chat/completions`
-  - Anthropic SDK → `POST /v1/messages`
-- 后续号池控制台的巡检结果与配置能力，也需要逐步区分 OpenAI chat 路径与 Anthropic messages 路径，而不是只围绕一种协议实现。
+### 18. 虚拟大模型使用地址修复已验证
+- 用户确认虚拟大模型页面的 `code` 弹窗地址已经从本地 `http://localhost:1994` 切换为 Render 线上地址。
+- 当前虚拟大模型使用说明与 CC Switch 配置片段已可直接使用 Render 线上 `Base URL`。
+
+### 19. 下一阶段主线
+- 进入“测试结果驱动虚拟大模型配置 / 快速组池”实现阶段
+- 目标：让测试成功的模型可以更直观地进入虚拟大模型轮询池，而不是继续纯手工逐个挂 backend
+
+### 20. ai.hhhl.cc 新 Key 已切换 & Render 新后端已在线验证
+- 用户提供新的可用 hhhl key：`sk-1H9Z8EGLCRWHszyHa3bo5jJj5oxNNVKQ`
+- 已同步更新本地恢复/导入脚本中的 hhhl 相关配置：
+  - `fix_platform_keys.js`
+  - `restore_all_keys.js`
+  - `check_platform_models.js`
+  - `probe_platforms.js`
+  - `import_workbuddy_models.js`
+  - `import_to_aigateway_console.js`
+  - `inject_models_node.js`
+  - `inject_full.js`
+- 已执行线上平台修复脚本并确认 Render 线上 `ai.hhhl.cc` 当前平台配置为：
+  - `base_url = https://ai.hhhl.cc/v1`
+  - `api_key = sk-1...NVKQ`
+- 已验证 Render 当前服务状态：
+  - `/health` 返回 200
+  - `GET /api/platforms` 返回 5 个平台真实 ID
+  - 手工请求 `/api/platforms/{id}/probe-model` 与 `/api/platforms/{id}/chat-test` 不再是 404，而是进入请求体校验并返回 `missing field model_id`
+- 结论：新版后端路由已在 Render 上，不再是旧镜像；下一步应继续用正确请求结构做线上功能验收，并推进“快速组池”入口。
+
+### 21. 快速组池第一版已落到 Proxies 页（本地代码完成）
+- 目标：把“平台拉模型 → 探测可用性 → 批量生成后端”直接收进虚拟大模型创建流程，减少手工逐个挂 backend。
+- 已修改前端：
+  - `frontend/src/pages/Proxies.tsx`
+  - `frontend/src/i18n.ts`
+- 已新增能力：
+  - 在“新建虚拟大模型”弹窗内加入“快速组池”卡片
+  - 支持输入目标 `model_id` 后批量扫描各平台 remote model / preset model
+  - 支持调用 `probePlatformModel` 对候选平台做逐个探测
+  - 仅把 `available` / `mapped_model_mismatch` 候选自动选中并回填为 `backends`
+  - 扫描结果表可展示平台、模型、来源、探测状态、实际命中模型、错误分类
+- 当前状态：
+  - 代码已落地，本地 lint 通过
+  - 尚未完成本轮 Render 发布；若要线上生效，下一步需要提交并推送触发 Render 自动部署，然后做页面验收
+- 下一步：
+  - 提交本轮前端改动
+  - 推送并等待 Render 自动部署
+  - 上线后验证 Proxies 页快速组池实际可用性
+
+
+
+
+
+
+
+
+
 
 
 

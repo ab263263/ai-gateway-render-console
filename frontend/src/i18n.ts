@@ -80,6 +80,22 @@ export const translations = {
     testAllModels: '测试全部模型',
     batchTestResult: '批量测试结果',
     errorCategory: '错误分类',
+    quickPool: '快速组池',
+    quickPoolDesc: '按模型 ID 扫描多个平台并一键填充可用后端',
+    quickPoolModelId: '组池模型 ID',
+    quickPoolModelIdPlaceholder: '例如：K2.6 / gpt-5.5 / MiniMax-M2.7',
+    quickPoolLoadCandidates: '扫描候选平台',
+    quickPoolProbeCandidates: '探测并填充可用候选',
+    quickPoolCandidates: '候选后端',
+    quickPoolNoCandidates: '暂无匹配候选，请先扫描',
+    quickPoolFillSuccess: '已填充 {0} 个后端候选',
+    quickPoolScanSuccess: '已扫描到 {0} 个候选后端',
+    quickPoolProbeSuccess: '已探测并填充 {0} 个可用候选',
+    quickPoolNeedModelId: '请先输入组池模型 ID',
+    quickPoolNeedCandidates: '请先扫描候选平台',
+    quickPoolOnlyHealthy: '仅纳入探测成功候选',
+    quickPoolProbeStatus: '探测状态',
+
 
 
 
@@ -290,8 +306,24 @@ export const translations = {
     testAllModels: 'Test All Models',
     batchTestResult: 'Batch Test Results',
     errorCategory: 'Error Category',
+    quickPool: 'Quick Pool Builder',
+    quickPoolDesc: 'Scan platforms by model ID and fill usable backends in one shot',
+    quickPoolModelId: 'Pool Model ID',
+    quickPoolModelIdPlaceholder: 'e.g. K2.6 / gpt-5.5 / MiniMax-M2.7',
+    quickPoolLoadCandidates: 'Scan Candidates',
+    quickPoolProbeCandidates: 'Probe and Fill Healthy Candidates',
+    quickPoolCandidates: 'Candidate Backends',
+    quickPoolNoCandidates: 'No matching candidates yet. Scan first.',
+    quickPoolFillSuccess: 'Filled {0} backend candidates',
+    quickPoolScanSuccess: 'Found {0} backend candidates',
+    quickPoolProbeSuccess: 'Probed and filled {0} healthy candidates',
+    quickPoolNeedModelId: 'Please enter a pool model ID first',
+    quickPoolNeedCandidates: 'Please scan candidates first',
+    quickPoolOnlyHealthy: 'Only include healthy probe results',
+    quickPoolProbeStatus: 'Probe Status',
 
     modelDesc: 'Manage AI models across platforms',
+
 
 
 

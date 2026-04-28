@@ -15,6 +15,8 @@ type RemoteModelResult = {
   platform_name?: string
 }
 
+type ProbeStatus = 'available' | 'mapped_model_mismatch' | 'cooldown' | 'unavailable' | 'untested'
+
 type ProbeRow = {
   key: string
   platform: string
@@ -27,7 +29,9 @@ type ProbeRow = {
   latency_ms: number
   category: string
   detail: string
+  probe_status: ProbeStatus
 }
+
 
 export default function ChatTest() {
   const { locale } = useAppContext()
@@ -99,19 +103,30 @@ export default function ChatTest() {
     }
   }
 
-  const normalizeProbe = (platformName: string, requestedModel: string, result: any): ProbeRow => ({
-    key: `${platformName}-${requestedModel}`,
-    platform: platformName,
-    requested_model: requestedModel,
-    actual_model: result?.actual_model || '',
-    models_ok: !!result?.models_probe?.success,
-    models_count: Number(result?.models_probe?.count || 0),
-    chat_ok: !!result?.chat_probe?.success,
-    status: Number(result?.chat_probe?.status || 0),
-    latency_ms: Number(result?.chat_probe?.latency_ms || 0),
-    category: result?.chat_probe?.category || '',
-    detail: result?.chat_probe?.message || result?.models_probe?.error || '',
-  })
+  const normalizeProbe = (platformName: string, requestedModel: string, result: any): ProbeRow => {
+    const category = result?.chat_probe?.category || ''
+    const probeStatus: ProbeStatus =
+      category === 'mapped_model_mismatch' ? 'mapped_model_mismatch' :
+      category === 'cooldown' ? 'cooldown' :
+      result?.chat_probe?.success ? 'available' :
+      result ? 'unavailable' : 'untested'
+
+    return {
+      key: `${platformName}-${requestedModel}`,
+      platform: platformName,
+      requested_model: requestedModel,
+      actual_model: result?.actual_model || '',
+      models_ok: !!result?.models_probe?.success,
+      models_count: Number(result?.models_probe?.count || 0),
+      chat_ok: !!result?.chat_probe?.success,
+      status: Number(result?.chat_probe?.status || 0),
+      latency_ms: Number(result?.chat_probe?.latency_ms || 0),
+      category,
+      detail: result?.chat_probe?.message || result?.models_probe?.error || '',
+      probe_status: probeStatus,
+    }
+  }
+
 
   const runSingleProbe = async (modelId: string) => {
     if (!selectedPlatformId || !selectedPlatform) return null
@@ -196,6 +211,14 @@ export default function ChatTest() {
   const batchColumns = [
     { title: t(locale, 'platforms'), dataIndex: 'platform', key: 'platform', width: 140 },
     { title: t(locale, 'modelId'), dataIndex: 'requested_model', key: 'requested_model', width: 220 },
+    {
+      title: t(locale, 'status'), dataIndex: 'probe_status', key: 'probe_status', width: 120,
+      render: (v: ProbeStatus) => {
+        const color = v === 'available' ? 'success' : v === 'mapped_model_mismatch' ? 'warning' : v === 'cooldown' ? 'processing' : v === 'unavailable' ? 'error' : 'default'
+        const label = v === 'available' ? '可用' : v === 'mapped_model_mismatch' ? '映射异常' : v === 'cooldown' ? '冷却中' : v === 'unavailable' ? '不可用' : '未测试'
+        return <Tag color={color}>{label}</Tag>
+      },
+    },
     { title: t(locale, 'actualModel'), dataIndex: 'actual_model', key: 'actual_model', width: 220, render: (v: string) => v || '-' },
     {
       title: '/models', dataIndex: 'models_ok', key: 'models_ok', width: 90,
@@ -210,6 +233,7 @@ export default function ChatTest() {
     { title: t(locale, 'errorCategory'), dataIndex: 'category', key: 'category', width: 180 },
     { title: t(locale, 'responseText'), dataIndex: 'detail', key: 'detail', ellipsis: true },
   ]
+
 
   return (
     <div>
