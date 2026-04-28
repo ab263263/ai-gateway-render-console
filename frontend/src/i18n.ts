@@ -66,6 +66,19 @@ export const translations = {
     apiKey: 'API Key',
     organization: 'Organization ID',
     quickPreset: '快速选择预设',
+    supportedModels: '支持模型',
+    chatTest: '聊天测试',
+    testMessage: '测试消息',
+    runChatTest: '开始测试',
+    chatTestResult: '测试结果',
+    responseText: '响应内容',
+    platformModels: '平台可用模型',
+    importModels: '导入模型',
+    importModelsFailed: '导入模型失败',
+
+
+
+
     // Models
     modelDesc: '管理各平台上的 AI 模型，支持预设选择或自定义输入',
     addModel: '添加模型',
@@ -256,7 +269,18 @@ export const translations = {
     apiKey: 'API Key',
     organization: 'Organization ID',
     quickPreset: 'Quick preset',
+    supportedModels: 'Supported Models',
+    chatTest: 'Chat Test',
+    testMessage: 'Test Message',
+    runChatTest: 'Run Test',
+    chatTestResult: 'Test Result',
+    responseText: 'Response',
+    platformModels: 'Platform Models',
+    importModels: 'Import Models',
+    importModelsFailed: 'Import models failed',
     modelDesc: 'Manage AI models across platforms',
+
+
     addModel: 'Add Model',
     editModel: 'Edit Model',
     displayName: 'Display Name',

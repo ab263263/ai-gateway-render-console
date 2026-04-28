@@ -3,6 +3,21 @@ use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use crate::models::platform::*;
 
+#[derive(Debug, serde::Deserialize)]
+pub struct PlatformChatTestRequest {
+    pub model_id: String,
+    pub message: String,
+    pub max_tokens: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ImportRemoteModelsRequest {
+    pub model_ids: Option<Vec<String>>,
+    pub max_tokens: Option<u32>,
+    pub context_window: Option<u32>,
+}
+
+
 pub async fn list(db: web::Data<DbPool>) -> AppResult<HttpResponse> {
     let db = db.into_inner();
     let platforms = web::block(move || crate::db::platform::list(&db))
@@ -63,6 +78,7 @@ pub async fn fetch_remote_models(
     let base_url = platform.base_url.trim_end_matches('/').to_string();
     let api_key = platform.api_key.clone();
     let platform_type = platform.platform_type.clone();
+    let platform_name = platform.name.clone();
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(timeout_secs))
@@ -71,11 +87,17 @@ pub async fn fetch_remote_models(
 
     let result = match platform_type {
         PlatformType::Anthropic => {
-            // Anthropic doesn't have a standard models list API, return empty
-            serde_json::json!({ "models": [] })
+            serde_json::json!({
+                "success": true,
+                "platform_id": platform.id,
+                "platform_name": platform_name,
+                "platform_type": "Anthropic",
+                "models": [],
+                "count": 0,
+                "message": "Anthropic does not provide a standard /models endpoint"
+            })
         }
         _ => {
-            // OpenAI compatible: GET /v1/models
             let url = format!("{}/models", base_url);
             let mut req = client.get(&url);
             if !api_key.is_empty() {
@@ -85,10 +107,17 @@ pub async fn fetch_remote_models(
             let status = resp.status();
             if !status.is_success() {
                 let body = resp.text().await.unwrap_or_default();
-                return Err(AppError::Internal(format!("API returned {}: {}", status, body.chars().take(200).collect::<String>())));
+                return Ok(HttpResponse::Ok().json(serde_json::json!({
+                    "success": false,
+                    "platform_id": platform.id,
+                    "platform_name": platform_name,
+                    "platform_type": format!("{:?}", platform_type),
+                    "models": [],
+                    "count": 0,
+                    "message": format!("API returned {}: {}", status, body.chars().take(200).collect::<String>())
+                })));
             }
             let body: serde_json::Value = resp.json().await.map_err(|e| AppError::Internal(format!("Failed to parse response: {}", e)))?;
-            // Extract model ids from OpenAI-format response
             let models: Vec<serde_json::Value> = body.get("data")
                 .and_then(|d| d.as_array())
                 .map(|arr| arr.iter().map(|m| serde_json::json!({
@@ -96,9 +125,244 @@ pub async fn fetch_remote_models(
                     "owned_by": m.get("owned_by").and_then(|v| v.as_str()).unwrap_or(""),
                 })).collect())
                 .unwrap_or_default();
-            serde_json::json!({ "models": models })
+            let count = models.len();
+            serde_json::json!({
+                "success": true,
+                "platform_id": platform.id,
+                "platform_name": platform_name,
+                "platform_type": format!("{:?}", platform_type),
+                "models": models,
+                "count": count,
+                "message": format!("Fetched {} models", count)
+            })
         }
     };
 
     Ok(HttpResponse::Ok().json(result))
+}
+
+pub async fn import_remote_models(
+    db: web::Data<DbPool>,
+    config: web::Data<crate::api::settings::SharedAppConfig>,
+    path: web::Path<String>,
+    body: web::Json<ImportRemoteModelsRequest>,
+) -> AppResult<HttpResponse> {
+    let id = path.into_inner();
+    let req = body.into_inner();
+    let db_for_platform = db.clone().into_inner();
+    let timeout_secs = config.read().defaults.test_connection_timeout_secs;
+
+    let platform = web::block(move || crate::db::platform::get(&db_for_platform, &id))
+        .await.map_err(|e| AppError::Internal(e.to_string()))??;
+
+    let base_url = platform.base_url.trim_end_matches('/').to_string();
+    let api_key = platform.api_key.clone();
+    let platform_type = platform.platform_type.clone();
+    let platform_id = platform.id.clone();
+    let platform_name = platform.name.clone();
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .build()
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let remote_models: Vec<String> = match platform_type {
+        PlatformType::Anthropic => Vec::new(),
+        _ => {
+            let url = format!("{}/models", base_url);
+            let mut request = client.get(&url);
+            if !api_key.is_empty() {
+                request = request.header("Authorization", format!("Bearer {}", api_key));
+            }
+            let resp = request.send().await.map_err(|e| AppError::Internal(format!("Failed to fetch models: {}", e)))?;
+            let status = resp.status();
+            if !status.is_success() {
+                let body = resp.text().await.unwrap_or_default();
+                return Ok(HttpResponse::Ok().json(serde_json::json!({
+                    "success": false,
+                    "platform_id": platform_id,
+                    "platform_name": platform_name,
+                    "imported": 0,
+                    "skipped": 0,
+                    "failed": 0,
+                    "models": [],
+                    "message": format!("API returned {}: {}", status, body.chars().take(200).collect::<String>())
+                })));
+            }
+            let body: serde_json::Value = resp.json().await.map_err(|e| AppError::Internal(format!("Failed to parse response: {}", e)))?;
+            body.get("data")
+                .and_then(|d| d.as_array())
+                .map(|arr| arr.iter()
+                    .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(String::from))
+                    .collect::<Vec<_>>())
+                .unwrap_or_default()
+        }
+    };
+
+    let selected_model_ids = req.model_ids.unwrap_or(remote_models.clone());
+    let db_for_import = db.into_inner();
+    let platform_id_for_import = platform_id.clone();
+    let max_tokens = req.max_tokens.unwrap_or(4096);
+    let context_window = req.context_window.unwrap_or(8192);
+
+    let import_result = web::block(move || -> AppResult<serde_json::Value> {
+        let existing = crate::db::model::list_by_platform(&db_for_import, &platform_id_for_import)?;
+        let existing_ids = existing.into_iter().map(|m| m.model_id).collect::<std::collections::HashSet<_>>();
+
+        let mut to_create = Vec::new();
+        let mut skipped = Vec::new();
+
+        for model_id in selected_model_ids {
+            if existing_ids.contains(&model_id) {
+                skipped.push(model_id);
+            } else {
+                to_create.push(crate::models::model::CreateModelRequest {
+                    platform_id: platform_id_for_import.clone(),
+                    model_id: model_id.clone(),
+                    display_name: model_id,
+                    max_tokens,
+                    context_window,
+                    input_price: None,
+                    output_price: None,
+                    capabilities: vec![],
+                });
+            }
+        }
+
+        let imported_models = crate::db::model::batch_create(&db_for_import, to_create)?;
+        let imported_ids = imported_models.into_iter().map(|m| m.model_id).collect::<Vec<_>>();
+
+        Ok(serde_json::json!({
+            "success": true,
+            "platform_id": platform_id_for_import,
+            "platform_name": platform_name,
+            "imported": imported_ids.len(),
+            "skipped": skipped.len(),
+            "failed": 0,
+            "models": imported_ids,
+            "skipped_models": skipped,
+            "message": format!("Imported {} models, skipped {} existing models", imported_ids.len(), skipped.len())
+        }))
+    }).await.map_err(|e| AppError::Internal(e.to_string()))??;
+
+    Ok(HttpResponse::Ok().json(import_result))
+}
+
+    let id = path.into_inner();
+    let req = body.into_inner();
+    let db = db.into_inner();
+    let timeout_secs = config.read().defaults.test_connection_timeout_secs;
+
+    let platform = web::block(move || crate::db::platform::get(&db, &id))
+        .await.map_err(|e| AppError::Internal(e.to_string()))??;
+
+    let base_url = platform.base_url.trim_end_matches('/').to_string();
+    let api_key = platform.api_key.clone();
+    let platform_type = platform.platform_type.clone();
+    let start = std::time::Instant::now();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .build()
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let max_tokens = req.max_tokens.unwrap_or(128);
+    let content = if req.message.trim().is_empty() { "hi".to_string() } else { req.message.clone() };
+
+    let result = match platform_type {
+        PlatformType::Anthropic => {
+            let url = format!("{}/v1/messages", base_url);
+            let mut request = client.post(&url)
+                .header("anthropic-version", "2023-06-01")
+                .header("content-type", "application/json")
+                .json(&serde_json::json!({
+                    "model": req.model_id,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "user", "content": content}]
+                }));
+            if !api_key.is_empty() {
+                request = request.header("x-api-key", &api_key);
+            }
+            request.send().await
+        }
+        _ => {
+            let url = format!("{}/chat/completions", base_url);
+            let mut request = client.post(&url)
+                .header("content-type", "application/json")
+                .json(&serde_json::json!({
+                    "model": req.model_id,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "user", "content": content}]
+                }));
+            if !api_key.is_empty() {
+                request = request.header("Authorization", format!("Bearer {}", api_key));
+            }
+            request.send().await
+        }
+    };
+
+    let latency_ms = start.elapsed().as_millis() as u64;
+
+    match result {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let is_success = resp.status().is_success();
+            let body_text = resp.text().await.unwrap_or_default();
+            let json_body = serde_json::from_str::<serde_json::Value>(&body_text).ok();
+            let output_text = json_body.as_ref()
+                .and_then(|v| v.get("choices"))
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.get("message"))
+                .and_then(|v| v.get("content"))
+                .and_then(|v| v.as_str())
+                .or_else(|| {
+                    json_body.as_ref()
+                        .and_then(|v| v.get("content"))
+                        .and_then(|v| v.as_array())
+                        .and_then(|arr| arr.first())
+                        .and_then(|v| v.get("text"))
+                        .and_then(|v| v.as_str())
+                })
+                .unwrap_or("")
+                .to_string();
+            let error_msg = json_body.as_ref()
+                .and_then(|v| v.get("error"))
+                .and_then(|e| e.get("message"))
+                .and_then(|m| m.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": is_success,
+                "status": status,
+                "latency_ms": latency_ms,
+                "platform_id": platform.id,
+                "platform_name": platform.name,
+                "model_id": req.model_id,
+                "message": if is_success { "Chat test successful" } else { format!("API returned {}: {}", status, if error_msg.is_empty() { body_text.chars().take(300).collect::<String>() } else { error_msg }) },
+                "output": output_text,
+                "raw": json_body.unwrap_or_else(|| serde_json::json!({"text": body_text.chars().take(500).collect::<String>()}))
+            })))
+        }
+        Err(e) => {
+            let msg = if e.is_timeout() {
+                format!("Connection timed out ({}s)", timeout_secs)
+            } else if e.is_connect() {
+                format!("Cannot connect to server: {}", e)
+            } else {
+                format!("Connection error: {}", e)
+            };
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": false,
+                "status": 0,
+                "latency_ms": latency_ms,
+                "platform_id": platform.id,
+                "platform_name": platform.name,
+                "model_id": req.model_id,
+                "message": msg,
+                "output": "",
+                "raw": serde_json::json!({})
+            })))
+        }
+    }
 }

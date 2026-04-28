@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Layout, Typography, theme, Dropdown, Button, Space, Modal, Tooltip, Divider, message } from 'antd'
+import { Layout, Typography, theme, Dropdown, Button, Modal, Tooltip, Divider } from 'antd'
 import {
   DashboardOutlined, CloudServerOutlined, ApiOutlined,
   SunOutlined, MoonOutlined, DesktopOutlined, GlobalOutlined,
-  BookOutlined, SettingOutlined, GithubOutlined, KeyOutlined,
+  BookOutlined, SettingOutlined, GithubOutlined, KeyOutlined, RobotOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
@@ -11,6 +11,8 @@ import Platforms from './pages/Platforms'
 import Proxies from './pages/Proxies'
 import ApiKeys from './pages/ApiKeys'
 import Settings from './pages/Settings'
+import Models from './pages/Models'
+import ChatTest from './pages/ChatTest'
 import { useAppContext } from './ThemeContext'
 import { t, type Locale, type ThemeMode } from './i18n'
 
@@ -20,7 +22,9 @@ const { Title, Text, Paragraph } = Typography
 const TAB_ITEMS = [
   { key: '/', icon: <DashboardOutlined style={{ fontSize: 18 }} />, color: '#1677ff', label: 'dashboard' },
   { key: '/platforms', icon: <CloudServerOutlined style={{ fontSize: 18 }} />, color: '#722ed1', label: 'platforms' },
+  { key: '/models', icon: <RobotOutlined style={{ fontSize: 18 }} />, color: '#13c2c2', label: 'models' },
   { key: '/proxies', icon: <ApiOutlined style={{ fontSize: 18 }} />, color: '#eb2f96', label: 'proxies' },
+  { key: '/chat-test', icon: <ApiOutlined style={{ fontSize: 18 }} />, color: '#fa8c16', label: 'chatTest' },
   { key: '/api-keys', icon: <KeyOutlined style={{ fontSize: 18 }} />, color: '#faad14', label: 'apiKeys' },
   { key: '/settings', icon: <SettingOutlined style={{ fontSize: 18 }} />, color: '#8c8c8c', label: 'settings' },
 ]
@@ -31,7 +35,6 @@ export default function App() {
   const { token } = theme.useToken()
   const { themeMode, setThemeMode, isDark, locale, setLocale } = useAppContext()
 
-  // Move message notifications to bottom-left to avoid blocking top navigation
   useEffect(() => {
     const style = document.createElement('style')
     style.id = 'message-left'
@@ -50,12 +53,8 @@ export default function App() {
   const themeIcon = themeMode === 'dark' ? <MoonOutlined /> : themeMode === 'light' ? <SunOutlined /> : <DesktopOutlined />
   const [docOpen, setDocOpen] = useState(false)
 
-  const activeTab = TAB_ITEMS.find(t => t.key === location.pathname)
-  const activeColor = activeTab?.color || '#1677ff'
-
   return (
     <Layout style={{ height: '100vh', overflow: 'hidden' }}>
-      {/* Top Header Bar */}
       <div style={{
         height: 52,
         padding: '0 20px',
@@ -66,7 +65,6 @@ export default function App() {
         background: isDark ? '#0a0a0a' : '#fff',
         flexShrink: 0,
       }}>
-        {/* Left: Logo + Name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 200 }}>
           <img src="./logo.png" alt="" style={{ width: 26, height: 26, flexShrink: 0 }} />
           <div style={{ overflow: 'hidden' }}>
@@ -75,7 +73,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Center: Tab Navigation — icon-only slider */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -85,12 +82,11 @@ export default function App() {
           padding: 3,
           position: 'relative',
         }}>
-          {/* Slider background */}
           <div style={{
             position: 'absolute',
             height: 'calc(100% - 6px)',
             width: `calc(${100 / TAB_ITEMS.length}% - 3px)`,
-            left: `calc(${TAB_ITEMS.findIndex(item => item.key === location.pathname) * (100 / TAB_ITEMS.length)}% + 3px)`,
+            left: `calc(${Math.max(TAB_ITEMS.findIndex(item => item.key === location.pathname), 0) * (100 / TAB_ITEMS.length)}% + 3px)`,
             top: 3,
             background: isDark ? 'rgba(255,255,255,0.1)' : '#fff',
             borderRadius: 8,
@@ -124,7 +120,6 @@ export default function App() {
           })}
         </div>
 
-        {/* Right: Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 200, justifyContent: 'flex-end' }}>
           <Tooltip title={t(locale, 'documentation')} placement="bottom">
             <Button type="text" size="small" icon={<BookOutlined style={{ color: token.colorTextSecondary }} />} onClick={() => setDocOpen(true)} />
@@ -154,7 +149,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Scrollable content */}
       <Content style={{
         overflow: 'auto',
         padding: 24,
@@ -164,13 +158,14 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/platforms" element={<Platforms />} />
+          <Route path="/models" element={<Models />} />
           <Route path="/proxies" element={<Proxies />} />
+          <Route path="/chat-test" element={<ChatTest />} />
           <Route path="/api-keys" element={<ApiKeys />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </Content>
 
-      {/* Documentation Modal */}
       <Modal
         title={t(locale, 'documentation')}
         open={docOpen}
@@ -219,13 +214,19 @@ function DocZh() {
         <li>进入「<Text strong>模型</Text>」页面，点击「<Text strong>添加模型</Text>」</li>
         <li>选择平台，选择预设模型或自定义输入模型 ID</li>
       </ol>
-      <Title level={5}>🔌 第三步：创建虚拟大模型</Title>
+      <Title level={5}>🧪 第三步：快捷测试</Title>
+      <Paragraph>你可以在「<Text strong>聊天测试</Text>」页面，直接选平台和模型发起测试，快速验证某个中转是否真的可用。</Paragraph>
+      <ol>
+        <li>先在平台页一键获取当前平台支持的模型</li>
+        <li>进入「聊天测试」页面，选择平台、模型并发送测试消息</li>
+      </ol>
+      <Title level={5}>🔌 第四步：创建虚拟大模型</Title>
       <Paragraph>虚拟大模型的名称即为对外暴露的模型 ID，后端可以挂载多个平台大模型实现负载均衡。默认同时支持 OpenAI 和 Anthropic 协议。</Paragraph>
       <ol>
         <li>进入「<Text strong>虚拟大模型</Text>」页面，点击「新建虚拟大模型」</li>
         <li>填写名称（即对外模型 ID，如 <Text code>qc480</Text>），添加后端大模型</li>
       </ol>
-      <Title level={5}>🔑 第四步：创建 API Key</Title>
+      <Title level={5}>🔑 第五步：创建 API Key</Title>
       <Paragraph>在「API Key」页面创建 API Key，用于 API 访问认证。API Key 全局通用，无需绑定特定虚拟大模型。</Paragraph>
       <ol>
         <li>进入「<Text strong>API Key</Text>」页面，点击「新建 API Key」</li>
@@ -267,20 +268,20 @@ function DocEn() {
     <div style={{ lineHeight: 1.8 }}>
       <Title level={4}>📖 AI Gateway Help</Title>
       <Paragraph>
-        <Text strong>AI Gateway</Text> is a cross-platform AI API aggregation and load balancing tool.
+        <Text strong>AI Gateway</Text> aggregates multiple AI providers behind one admin UI and one unified API.
       </Paragraph>
       <Divider />
-      <Title level={5}>🔗 Step 1: Add an AI Platform</Title>
-      <Paragraph>Navigate to "Platforms" page, add a platform with API URL and API Key.</Paragraph>
-      <Title level={5}>🤖 Step 2: Add Models</Title>
-      <Paragraph>Navigate to "Models" page, add models from your platforms.</Paragraph>
-      <Title level={5}>🔌 Step 3: Create Virtual Models</Title>
-      <Paragraph>The virtual model name is the model ID exposed to clients. You can attach multiple backend models for load balancing. Both OpenAI and Anthropic protocols are supported by default.</Paragraph>
-      <Title level={5}>🔑 Step 4: Create API Keys</Title>
-      <Paragraph>Navigate to "API Keys" page to create API keys for access authentication. Keys are globally valid — no need to bind to specific virtual models.</Paragraph>
-      <Title level={5}>📡 API Endpoints</Title>
-      <Paragraph>Assuming admin port is <Text code>1994</Text>, virtual model name is <Text code>qc480</Text>:</Paragraph>
-      <Text strong>OpenAI Compatible:</Text>
+      <Title level={5}>1. Add platforms</Title>
+      <Paragraph>Add upstream providers with API base URL and API key.</Paragraph>
+      <Title level={5}>2. Add models</Title>
+      <Paragraph>Manage models per platform and fetch remote model IDs when available.</Paragraph>
+      <Title level={5}>3. Chat test</Title>
+      <Paragraph>Use the Chat Test page to pick a platform and remote model, then send a quick validation message.</Paragraph>
+      <Title level={5}>4. Create virtual models</Title>
+      <Paragraph>Create virtual models as the public-facing unified model IDs for clients.</Paragraph>
+      <Title level={5}>5. Create API keys</Title>
+      <Paragraph>Create admin-generated API keys for client access.</Paragraph>
+      <Title level={5}>API Example</Title>
       <div style={codeStyle}>{`POST http://localhost:1994/v1/chat/completions
 Content-Type: application/json
 Authorization: Bearer <your-api-key>

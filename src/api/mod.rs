@@ -20,6 +20,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route("/platforms/{id}", web::put().to(platform::update))
                 .route("/platforms/{id}", web::delete().to(platform::delete))
                 .route("/platforms/{id}/remote-models", web::get().to(platform::fetch_remote_models))
+                .route("/platforms/{id}/remote-models/import", web::post().to(platform::import_remote_models))
+                .route("/platforms/{id}/chat-test", web::post().to(platform::test_platform_chat))
+
                 // 模型
                 .route("/models", web::get().to(model::list))
                 .route("/models", web::post().to(model::create))
