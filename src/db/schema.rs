@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS proxies_new (
 );
 
 INSERT OR IGNORE INTO proxies_new (id, name, protocols, auth_token, created_at)
-    SELECT id, name, protocols, auth_token, created_at FROM proxies;
+    SELECT id, name, '["OpenAI"]', NULL, created_at FROM proxies;
 
 DROP TABLE IF EXISTS proxies;
 ALTER TABLE proxies_new RENAME TO proxies;
