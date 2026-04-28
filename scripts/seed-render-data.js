@@ -4,7 +4,16 @@ const BASE_URL = process.env.AI_GATEWAY_BASE_URL || `http://${APP_HOST}:${APP_PO
 
 const AUTH_HEADER = process.env.AI_GATEWAY_BASIC_AUTH || '';
 
+function logStep(message, extra) {
+  if (typeof extra === 'undefined') {
+    console.log(`[seed] ${message}`);
+    return;
+  }
+  console.log(`[seed] ${message}`, extra);
+}
+
 const MODELS_CONFIG = [
+
   { id: 'MiniMax-M2.7-highspeed', name: 'MiniMax-M2.7-highspeed', url: 'https://api.zaixianshauti.top/v1', apiKey: 'sk-YOy99Mw8fmEM585PriPd6VNkP5Vp5ybUeS4mdKA4Xe7jYZF9', maxInputTokens: 262144, maxOutputTokens: 65536 },
   { id: 'K2.6', name: 'K2.6 (hiapi)', url: 'https://hiapi.work/v1', apiKey: 'sk-JevCamIEljvYJdV5mDuWOP4K3VKPx8FY2aSz5ER6PH24g4pE', maxInputTokens: 262144, maxOutputTokens: 65536 },
   { id: 'gpt-5.5', name: 'gpt-5.5', url: 'http://new.xem8k5.top:3000/v1', apiKey: 'sk-LQnuh6GNzQab05ynSWzypmZU9NI4CjjXEehWRVxcni7y0vI8', maxInputTokens: 258000, maxOutputTokens: 65536 },
@@ -19,14 +28,20 @@ const MODELS_CONFIG = [
 ];
 
 async function apiRequest(path, options = {}) {
+  const method = options.method || 'GET';
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (AUTH_HEADER) headers.Authorization = AUTH_HEADER;
+  logStep(`${method} ${path}`, AUTH_HEADER ? 'with auth header' : 'without auth header');
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   const text = await res.text();
   let data;
   try { data = JSON.parse(text); } catch { data = text; }
+  if (!res.ok) {
+    logStep(`${method} ${path} failed`, { status: res.status, data });
+  }
   return { ok: res.ok, status: res.status, data };
 }
+
 
 function groupByUrl(models) {
   const groups = {};
@@ -128,20 +143,29 @@ async function ensureRoute(proxyId, platformId, model) {
 
 
 async function main() {
+  logStep('seed starting', { baseUrl: BASE_URL, authConfigured: Boolean(AUTH_HEADER), groups: groupByUrl(MODELS_CONFIG).length, models: MODELS_CONFIG.length });
   const groups = groupByUrl(MODELS_CONFIG);
   for (const group of groups) {
+    logStep('processing platform group', { url: group.url, modelCount: group.models.length });
     const platformId = await ensurePlatform(group);
     for (const model of group.models) {
+      logStep('processing model', { modelId: model.id, platformId });
       await ensureModel(platformId, model);
       const proxyId = await ensureProxy(model);
       await ensureRoute(proxyId, platformId, model);
     }
-
   }
-  console.log('seed complete');
+
+  const stats = await apiRequest('/api/stats/overview');
+  if (stats.ok) {
+    logStep('seed complete with stats', stats.data);
+  } else {
+    logStep('seed complete but stats fetch failed', { status: stats.status, data: stats.data });
+  }
 }
 
 main().catch(err => {
-  console.error(err.message || err);
+  console.error('[seed] fatal error', err && err.stack ? err.stack : (err.message || err));
   process.exit(1);
 });
+
