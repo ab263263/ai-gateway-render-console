@@ -71,10 +71,12 @@ pub async fn get(db: web::Data<DbPool>, path: web::Path<String>) -> AppResult<Ht
         for b in &backends {
             let db4 = db_pool.clone();
             let mid = b.model_id.clone();
-            if let Ok(model) = web::block(move || crate::db::model::get(&db4, &mid)).await.map_err(|e| AppError::Internal(e.to_string()))? {
-                model_map.insert(b.model_id.clone(), model);
-            }
+            let model = web::block(move || crate::db::model::get(&db4, &mid))
+                .await
+                .map_err(|e| AppError::Internal(e.to_string()))??;
+            model_map.insert(b.model_id.clone(), model);
         }
+
         proxy.capabilities = compute_caps_from_backends(&backends, &model_map);
     }
 

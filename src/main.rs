@@ -1,6 +1,7 @@
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer, HttpResponse, middleware, http::header};
-use actix_web::dev::Service;
+use actix_web::body::EitherBody;
+use actix_web::dev::{Service, ServiceResponse};
 use actix_files as actix_files;
 use std::future::Future;
 use std::pin::Pin;
@@ -89,7 +90,7 @@ async fn main() -> std::io::Result<()> {
                     let needs_admin_auth = !path.starts_with("/v1/") && path != "/health";
                     let authorized = admin_username.is_empty() || admin_password.is_empty() || is_admin_authorized(req.headers().get(header::AUTHORIZATION), &admin_username, &admin_password);
 
-                    let fut: Pin<Box<dyn Future<Output = Result<_, actix_web::Error>>>> = if !needs_admin_auth || authorized {
+                    let fut: Pin<Box<dyn Future<Output = Result<ServiceResponse<EitherBody<actix_web::body::BoxBody>>, actix_web::Error>>>>> = if !needs_admin_auth || authorized {
                         let fut = srv.call(req);
                         Box::pin(async move {
                             let res = fut.await?;
@@ -123,3 +124,4 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
+
