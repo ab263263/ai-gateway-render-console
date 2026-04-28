@@ -2,6 +2,8 @@ use actix_cors::Cors;
 use actix_web::{web, App, HttpServer, HttpResponse, middleware, http::header};
 use actix_web::dev::Service;
 use actix_files as actix_files;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use parking_lot::RwLock;
 use base64::Engine as _;
@@ -87,7 +89,7 @@ async fn main() -> std::io::Result<()> {
                     let needs_admin_auth = !path.starts_with("/v1/") && path != "/health";
                     let authorized = admin_username.is_empty() || admin_password.is_empty() || is_admin_authorized(req.headers().get(header::AUTHORIZATION), &admin_username, &admin_password);
 
-                    if !needs_admin_auth || authorized {
+                    let fut: Pin<Box<dyn Future<Output = Result<_, actix_web::Error>>>> = if !needs_admin_auth || authorized {
                         let fut = srv.call(req);
                         Box::pin(async move {
                             let res = fut.await?;
@@ -100,7 +102,9 @@ async fn main() -> std::io::Result<()> {
                                 .finish();
                             Ok(req.into_response(response).map_into_right_body())
                         })
-                    }
+                    };
+
+                    fut
                 }
             })
 
