@@ -75,6 +75,11 @@ export const translations = {
     platformModels: '平台可用模型',
     importModels: '导入模型',
     importModelsFailed: '导入模型失败',
+    manualModelId: '手动模型 ID',
+    actualModel: '实际命中模型',
+    testAllModels: '测试全部模型',
+    batchTestResult: '批量测试结果',
+
 
 
 
@@ -278,7 +283,12 @@ export const translations = {
     platformModels: 'Platform Models',
     importModels: 'Import Models',
     importModelsFailed: 'Import models failed',
+    manualModelId: 'Manual Model ID',
+    actualModel: 'Actual Model',
+    testAllModels: 'Test All Models',
+    batchTestResult: 'Batch Test Results',
     modelDesc: 'Manage AI models across platforms',
+
 
 
     addModel: 'Add Model',
