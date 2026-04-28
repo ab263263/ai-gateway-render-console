@@ -1,6 +1,14 @@
-# Render Free Plan Dockerfile
-# Rust backend: pre-built by GitHub Actions, stored in render-bin/
-# Frontend: built in Docker (Node is lightweight, no OOM risk on Free Plan)
+# syntax=docker/dockerfile:1
+
+FROM rust:1-bookworm AS backend-builder
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY config.toml ./config.toml
+RUN cargo build --release
 
 FROM node:24-bookworm AS frontend-builder
 WORKDIR /app/frontend
@@ -9,18 +17,14 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM debian:bookworm-slim
+FROM node:24-bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-# Copy pre-built Rust binary (built by GitHub Actions CI)
-COPY render-bin/ai-gateway /app/ai-gateway
+COPY --from=backend-builder /app/target/release/ai-gateway /app/ai-gateway
 RUN chmod +x /app/ai-gateway
 
-# Copy frontend (vite outDir is ../static, i.e. /app/static in builder stage)
 COPY --from=frontend-builder /app/static /app/static
-
-# Copy config
 COPY config.toml /app/config.toml
 COPY scripts /app/scripts
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
@@ -34,5 +38,3 @@ ENV SQL_DSN=sqlite:///data/ai-gateway.db
 EXPOSE 1994
 
 CMD ["/app/docker-entrypoint.sh"]
-
-

@@ -3,16 +3,13 @@ name: Build Render Deployment
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'render-bin/**'
-      - 'frontend/dist/**'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -31,10 +28,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Install system deps
+      - name: Install backend deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y libssl-dev
+          sudo apt-get install -y pkg-config libssl-dev
 
       - name: Build Rust backend
         run: cargo build --release
@@ -45,13 +42,9 @@ jobs:
           npm ci
           npm run build
 
-      - name: Commit binary to repo for Render
+      - name: Validate Dockerfile references
         run: |
-          mkdir -p render-bin
-          cp target/release/ai-gateway render-bin/ai-gateway
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add render-bin/ai-gateway -f
-          git diff --cached --quiet || git commit -m "chore: update pre-built binary [skip ci]"
-          git push
-
+          test -f Dockerfile
+          test -f docker-entrypoint.sh
+          test -f scripts/seed-render-data.js
+          echo "build validation passed"
