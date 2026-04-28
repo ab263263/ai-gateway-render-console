@@ -1,14 +1,11 @@
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer, HttpResponse, middleware, http::header};
-use actix_web::body::EitherBody;
-use actix_web::dev::{Service, ServiceResponse};
+use actix_web::dev::Service;
 use actix_files as actix_files;
-use std::future::Future;
-use std::pin::Pin;
+use futures_util::future::Either;
 use std::sync::Arc;
 use parking_lot::RwLock;
 use base64::Engine as _;
-
 
 use ai_gateway::proxy::handler::ProxyState;
 use ai_gateway::lb::BackendSelector;
@@ -33,7 +30,6 @@ fn is_admin_authorized(auth_header: Option<&header::HeaderValue>, username: &str
 
     decoded_str == format!("{}:{}", username, password)
 }
-
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -76,7 +72,6 @@ async fn main() -> std::io::Result<()> {
     let admin_password = app_config.security.admin_password.clone();
 
     HttpServer::new(move || {
-
         let cors = Cors::permissive();
 
         App::new()
@@ -90,26 +85,19 @@ async fn main() -> std::io::Result<()> {
                     let needs_admin_auth = !path.starts_with("/v1/") && path != "/health";
                     let authorized = admin_username.is_empty() || admin_password.is_empty() || is_admin_authorized(req.headers().get(header::AUTHORIZATION), &admin_username, &admin_password);
 
-                    let fut = if !needs_admin_auth || authorized {
+                    if !needs_admin_auth || authorized {
                         let fut = srv.call(req);
-                        Box::pin(async move {
-                            let res = fut.await?;
-                            Ok(res.map_into_left_body())
-                        })
+                        Either::Left(async move { fut.await })
                     } else {
-                        Box::pin(async move {
+                        Either::Right(async move {
                             let response = HttpResponse::Unauthorized()
                                 .insert_header((header::WWW_AUTHENTICATE, "Basic realm=\"AI Gateway Admin\""))
                                 .finish();
-                            Ok(req.into_response(response).map_into_right_body())
+                            Ok(req.into_response(response))
                         })
-                    };
-
-
-                    fut
+                    }
                 }
             })
-
             .app_data(web::Data::new(db_pool.clone()))
             .app_data(web::Data::new(proxy_state.clone()))
             .app_data(web::Data::new(shared_config.clone()))
@@ -125,4 +113,3 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-
