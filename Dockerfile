@@ -22,6 +22,9 @@ COPY --from=frontend-builder /app/static /app/static
 
 # Copy config
 COPY config.toml /app/config.toml
+COPY scripts /app/scripts
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 RUN mkdir -p /data /app/data
 
@@ -30,5 +33,6 @@ ENV PORT=1994
 ENV SQL_DSN=sqlite:///data/ai-gateway.db
 EXPOSE 1994
 
-CMD ["/app/ai-gateway"]
+CMD ["/app/docker-entrypoint.sh"]
+
 
