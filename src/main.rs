@@ -90,7 +90,7 @@ async fn main() -> std::io::Result<()> {
                     let needs_admin_auth = !path.starts_with("/v1/") && path != "/health";
                     let authorized = admin_username.is_empty() || admin_password.is_empty() || is_admin_authorized(req.headers().get(header::AUTHORIZATION), &admin_username, &admin_password);
 
-                    let fut: Pin<Box<dyn Future<Output = Result<ServiceResponse<EitherBody<actix_web::body::BoxBody>>, actix_web::Error>>>>> = if !needs_admin_auth || authorized {
+                    let fut = if !needs_admin_auth || authorized {
                         let fut = srv.call(req);
                         Box::pin(async move {
                             let res = fut.await?;
@@ -104,6 +104,7 @@ async fn main() -> std::io::Result<()> {
                             Ok(req.into_response(response).map_into_right_body())
                         })
                     };
+
 
                     fut
                 }
