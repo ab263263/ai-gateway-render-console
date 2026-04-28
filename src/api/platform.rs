@@ -17,6 +17,16 @@ pub struct ImportRemoteModelsRequest {
     pub context_window: Option<u32>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct PlatformProbeRequest {
+    pub model_id: String,
+    pub message: Option<String>,
+    pub max_tokens: Option<u32>,
+}
+
+
+
+
 
 pub async fn list(db: web::Data<DbPool>) -> AppResult<HttpResponse> {
     let db = db.into_inner();
@@ -248,6 +258,188 @@ pub async fn import_remote_models(
     Ok(HttpResponse::Ok().json(import_result))
 }
 
+pub async fn probe_platform_model(
+    db: web::Data<DbPool>,
+    config: web::Data<crate::api::settings::SharedAppConfig>,
+    path: web::Path<String>,
+    body: web::Json<PlatformProbeRequest>,
+) -> AppResult<HttpResponse> {
+    let id = path.into_inner();
+    let req = body.into_inner();
+    let db = db.into_inner();
+    let timeout_secs = config.read().defaults.test_connection_timeout_secs;
+
+    let platform = web::block(move || crate::db::platform::get(&db, &id))
+        .await.map_err(|e| AppError::Internal(e.to_string()))??;
+
+    let base_url = platform.base_url.trim_end_matches('/').to_string();
+    let api_key = platform.api_key.clone();
+    let platform_type = platform.platform_type.clone();
+    let model_id = req.model_id.clone();
+    let start = std::time::Instant::now();
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .build()
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+
+    let mut models_ok = false;
+    let mut models_count = 0usize;
+    let mut models_error = String::new();
+
+    match platform_type {
+        PlatformType::Anthropic => {
+            models_error = "Anthropic does not provide a standard /models endpoint".to_string();
+        }
+        _ => {
+            let models_url = format!("{}/models", base_url);
+            let mut models_req = client.get(&models_url);
+            if !api_key.is_empty() {
+                models_req = models_req.header("Authorization", format!("Bearer {}", api_key));
+            }
+            match models_req.send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status.is_success() {
+                        let body: serde_json::Value = resp.json().await.unwrap_or_default();
+                        let count = body.get("data").and_then(|d| d.as_array()).map(|a| a.len()).unwrap_or(0);
+                        models_ok = true;
+                        models_count = count;
+                    } else {
+                        let body = resp.text().await.unwrap_or_default();
+                        models_error = body.chars().take(200).collect();
+                    }
+                }
+                Err(e) => {
+                    models_error = e.to_string();
+                }
+            }
+        }
+    }
+
+    let max_tokens = req.max_tokens.unwrap_or(128);
+    let content = req.message.unwrap_or_else(|| "hi".to_string());
+    let chat_result = match platform_type {
+        PlatformType::Anthropic => {
+            let url = format!("{}/v1/messages", base_url);
+            let mut request = client.post(&url)
+                .header("anthropic-version", "2023-06-01")
+                .header("content-type", "application/json")
+                .json(&serde_json::json!({
+                    "model": model_id,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "user", "content": content}]
+                }));
+            if !api_key.is_empty() {
+                request = request.header("x-api-key", &api_key);
+            }
+            request.send().await
+        }
+        _ => {
+            let url = format!("{}/chat/completions", base_url);
+            let mut request = client.post(&url)
+                .header("content-type", "application/json")
+                .json(&serde_json::json!({
+                    "model": req.model_id,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "user", "content": content}]
+                }));
+            if !api_key.is_empty() {
+                request = request.header("Authorization", format!("Bearer {}", api_key));
+            }
+            request.send().await
+        }
+    };
+
+    let latency_ms = start.elapsed().as_millis() as u64;
+
+    match chat_result {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let success = resp.status().is_success();
+            let body_text = resp.text().await.unwrap_or_default();
+            let json_body = serde_json::from_str::<serde_json::Value>(&body_text).ok();
+            let actual_model = json_body.as_ref().and_then(|v| v.get("model")).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let output = json_body.as_ref()
+                .and_then(|v| v.get("choices"))
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.get("message"))
+                .and_then(|v| v.get("content"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let error_msg = json_body.as_ref()
+                .and_then(|v| v.get("error"))
+                .and_then(|e| e.get("message"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| body_text.chars().take(300).collect::<String>().as_str())
+                .to_string();
+            let category = if success {
+                if !actual_model.is_empty() && actual_model != req.model_id { "mapped_model_mismatch" } else { "ok" }
+            } else if error_msg.contains("Invalid token") || error_msg.contains("Invalid API key") {
+                "auth_error"
+            } else if error_msg.contains("cooldown") {
+                "cooldown"
+            } else if error_msg.contains("rate_limit") || error_msg.contains("Too Many Requests") {
+                "rate_limit"
+            } else if error_msg.contains("No available channel") {
+                "no_available_channel"
+            } else if error_msg.contains("model_not_found") {
+                "model_not_found"
+            } else {
+                "platform_compat_issue"
+            };
+
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": success,
+                "platform_id": platform.id,
+                "platform_name": platform.name,
+                "requested_model": req.model_id,
+                "actual_model": actual_model,
+                "models_probe": {
+                    "success": models_ok,
+                    "count": models_count,
+                    "error": models_error
+                },
+                "chat_probe": {
+                    "success": success,
+                    "status": status,
+                    "latency_ms": latency_ms,
+                    "category": category,
+                    "message": if success { "Probe successful" } else { error_msg },
+                    "output": output
+                },
+                "raw": json_body.unwrap_or_else(|| serde_json::json!({"text": body_text.chars().take(500).collect::<String>()}))
+            })))
+        }
+        Err(e) => {
+            let category = if e.is_timeout() { "timeout" } else if e.is_connect() { "network_error" } else { "platform_compat_issue" };
+            Ok(HttpResponse::Ok().json(serde_json::json!({
+                "success": false,
+                "platform_id": platform.id,
+                "platform_name": platform.name,
+                "requested_model": req.model_id,
+                "actual_model": "",
+                "models_probe": {
+                    "success": models_ok,
+                    "count": models_count,
+                    "error": models_error
+                },
+                "chat_probe": {
+                    "success": false,
+                    "status": 0,
+                    "latency_ms": latency_ms,
+                    "category": category,
+                    "message": e.to_string(),
+                    "output": ""
+                },
+                "raw": serde_json::json!({})
+            })))
+        }
+    }
+}
+
 pub async fn test_platform_chat(
     db: web::Data<DbPool>,
     config: web::Data<crate::api::settings::SharedAppConfig>,
@@ -372,4 +564,5 @@ pub async fn test_platform_chat(
         }
     }
 }
+
 

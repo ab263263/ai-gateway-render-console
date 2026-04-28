@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Card, Col, Input, InputNumber, Row, Select, Space, Table, Tag, Typography, message } from 'antd'
 import { ApiOutlined, SendOutlined, PlayCircleOutlined } from '@ant-design/icons'
-import { listPlatforms, fetchRemoteModels, testPlatformChat } from '../api'
+import { listPlatforms, fetchRemoteModels, probePlatformModel, testPlatformChat } from '../api'
 import { useAppContext } from '../ThemeContext'
 import { t } from '../i18n'
 
@@ -15,15 +15,18 @@ type RemoteModelResult = {
   platform_name?: string
 }
 
-type TestRow = {
+type ProbeRow = {
   key: string
-  model_id: string
-  success: boolean
+  platform: string
+  requested_model: string
+  actual_model: string
+  models_ok: boolean
+  models_count: number
+  chat_ok: boolean
   status: number
   latency_ms: number
-  message: string
-  output?: string
-  actual_model?: string
+  category: string
+  detail: string
 }
 
 export default function ChatTest() {
@@ -39,8 +42,8 @@ export default function ChatTest() {
   const [testing, setTesting] = useState(false)
   const [testingAll, setTestingAll] = useState(false)
   const [modelMap, setModelMap] = useState<Record<string, RemoteModelResult>>({})
-  const [testResult, setTestResult] = useState<any>(null)
-  const [batchResults, setBatchResults] = useState<TestRow[]>([])
+  const [probeResult, setProbeResult] = useState<any>(null)
+  const [batchResults, setBatchResults] = useState<ProbeRow[]>([])
 
   useEffect(() => { void loadPlatforms() }, [])
 
@@ -89,35 +92,35 @@ export default function ChatTest() {
     setSelectedPlatformId(value)
     setSelectedModelId(undefined)
     setManualModelId('')
-    setTestResult(null)
+    setProbeResult(null)
     setBatchResults([])
     if (!modelMap[value]) {
       await handleFetchModels(value)
     }
   }
 
-  const normalizeResult = (modelId: string, result: any): TestRow => ({
-    key: modelId,
-    model_id: modelId,
-    success: !!result?.success,
-    status: Number(result?.status || 0),
-    latency_ms: Number(result?.latency_ms || 0),
-    message: result?.message || '',
-    output: result?.output || '',
-    actual_model: result?.raw?.model || result?.model || '',
+  const normalizeProbe = (platformName: string, requestedModel: string, result: any): ProbeRow => ({
+    key: `${platformName}-${requestedModel}`,
+    platform: platformName,
+    requested_model: requestedModel,
+    actual_model: result?.actual_model || '',
+    models_ok: !!result?.models_probe?.success,
+    models_count: Number(result?.models_probe?.count || 0),
+    chat_ok: !!result?.chat_probe?.success,
+    status: Number(result?.chat_probe?.status || 0),
+    latency_ms: Number(result?.chat_probe?.latency_ms || 0),
+    category: result?.chat_probe?.category || '',
+    detail: result?.chat_probe?.message || result?.models_probe?.error || '',
   })
 
-  const runSingleTest = async (modelId: string) => {
-    if (!selectedPlatformId) {
-      message.warning(t(locale, 'selectPlatform'))
-      return null
-    }
-    const result = await testPlatformChat(selectedPlatformId, {
+  const runSingleProbe = async (modelId: string) => {
+    if (!selectedPlatformId || !selectedPlatform) return null
+    const result = await probePlatformModel(selectedPlatformId, {
       model_id: modelId,
       message: messageText,
       max_tokens: maxTokens,
     })
-    return normalizeResult(modelId, result)
+    return { raw: result, row: normalizeProbe(selectedPlatform.name, modelId, result) }
   }
 
   const handleTest = async () => {
@@ -131,17 +134,18 @@ export default function ChatTest() {
     }
     setTesting(true)
     try {
-      const result = await runSingleTest(effectiveModelId)
-      setTestResult(result)
-      if (result?.success) {
-        message.success(`${t(locale, 'testConnectionSuccess')} (${result.latency_ms}ms)`)
+      const result = await runSingleProbe(effectiveModelId)
+      setProbeResult(result?.raw || null)
+      if (result?.row) {
+        setBatchResults(prev => [result.row, ...prev.filter(item => item.requested_model !== result.row.requested_model)])
+      }
+      if (result?.raw?.chat_probe?.success) {
+        message.success(`${t(locale, 'testConnectionSuccess')} (${result.raw.chat_probe.latency_ms}ms)`)
       } else {
-        message.error(result?.message || t(locale, 'testConnectionFailed'))
+        message.error(result?.raw?.chat_probe?.message || t(locale, 'testConnectionFailed'))
       }
     } catch (e: any) {
-      const err = e?.response?.data?.error?.message || e?.message || t(locale, 'testConnectionFailed')
-      setTestResult({ success: false, status: 0, latency_ms: 0, message: err, output: '' })
-      message.error(err)
+      message.error(e?.response?.data?.error?.message || e?.message || t(locale, 'testConnectionFailed'))
     }
     setTesting(false)
   }
@@ -149,20 +153,7 @@ export default function ChatTest() {
   const handleSingleRowTest = async (modelId: string) => {
     setSelectedModelId(modelId)
     setManualModelId('')
-    setTesting(true)
-    try {
-      const result = await runSingleTest(modelId)
-      if (result) {
-        setTestResult(result)
-        setBatchResults(prev => {
-          const next = prev.filter(item => item.model_id !== modelId)
-          return [result, ...next]
-        })
-      }
-    } catch (e: any) {
-      message.error(e?.response?.data?.error?.message || e?.message || t(locale, 'testConnectionFailed'))
-    }
-    setTesting(false)
+    await handleTest()
   }
 
   const handleTestAll = async () => {
@@ -175,39 +166,49 @@ export default function ChatTest() {
       return
     }
     setTestingAll(true)
-    const results: TestRow[] = []
+    const results: ProbeRow[] = []
     for (const model of currentModels) {
       try {
-        const result = await runSingleTest(model.id)
-        if (result) results.push(result)
+        const result = await runSingleProbe(model.id)
+        if (result?.row) results.push(result.row)
       } catch (e: any) {
+        if (!selectedPlatform) continue
         results.push({
-          key: model.id,
-          model_id: model.id,
-          success: false,
+          key: `${selectedPlatform.name}-${model.id}`,
+          platform: selectedPlatform.name,
+          requested_model: model.id,
+          actual_model: '',
+          models_ok: false,
+          models_count: 0,
+          chat_ok: false,
           status: 0,
           latency_ms: 0,
-          message: e?.response?.data?.error?.message || e?.message || t(locale, 'testConnectionFailed'),
-          output: '',
-          actual_model: '',
+          category: 'platform_compat_issue',
+          detail: e?.response?.data?.error?.message || e?.message || t(locale, 'testConnectionFailed'),
         })
       }
     }
     setBatchResults(results)
     setTestingAll(false)
-    message.success(`完成 ${results.length} 个模型测试`)
+    message.success(`完成 ${results.length} 个模型巡检`)
   }
 
   const batchColumns = [
-    { title: t(locale, 'modelId'), dataIndex: 'model_id', key: 'model_id', width: 220 },
+    { title: t(locale, 'platforms'), dataIndex: 'platform', key: 'platform', width: 140 },
+    { title: t(locale, 'modelId'), dataIndex: 'requested_model', key: 'requested_model', width: 220 },
+    { title: t(locale, 'actualModel'), dataIndex: 'actual_model', key: 'actual_model', width: 220, render: (v: string) => v || '-' },
     {
-      title: t(locale, 'status'), dataIndex: 'success', key: 'success', width: 90,
+      title: '/models', dataIndex: 'models_ok', key: 'models_ok', width: 90,
+      render: (v: boolean, row: ProbeRow) => <Tag color={v ? 'success' : 'default'}>{v ? `OK(${row.models_count})` : 'FAIL'}</Tag>,
+    },
+    {
+      title: 'chat', dataIndex: 'chat_ok', key: 'chat_ok', width: 90,
       render: (v: boolean) => <Tag color={v ? 'success' : 'error'}>{v ? 'OK' : 'FAIL'}</Tag>,
     },
     { title: 'HTTP', dataIndex: 'status', key: 'status', width: 80 },
     { title: t(locale, 'latency'), dataIndex: 'latency_ms', key: 'latency_ms', width: 90, render: (v: number) => `${v}ms` },
-    { title: t(locale, 'actualModel'), dataIndex: 'actual_model', key: 'actual_model', width: 220, render: (v: string) => v || '-' },
-    { title: t(locale, 'responseText'), dataIndex: 'message', key: 'message', ellipsis: true },
+    { title: t(locale, 'errorCategory'), dataIndex: 'category', key: 'category', width: 180 },
+    { title: t(locale, 'responseText'), dataIndex: 'detail', key: 'detail', ellipsis: true },
   ]
 
   return (
@@ -313,26 +314,35 @@ export default function ChatTest() {
           </Card>
 
           <Card title={t(locale, 'chatTestResult')} style={{ marginTop: 16 }}>
-            {!testResult && <Text type="secondary">{t(locale, 'noRequests')}</Text>}
-            {testResult && (
+            {!probeResult && <Text type="secondary">{t(locale, 'noRequests')}</Text>}
+            {probeResult && (
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Alert
-                  type={testResult.success ? 'success' : 'error'}
+                  type={probeResult?.chat_probe?.success ? 'success' : 'error'}
                   showIcon
-                  message={testResult.success ? t(locale, 'testConnectionSuccess') : t(locale, 'testConnectionFailed')}
-                  description={testResult.message}
+                  message={probeResult?.chat_probe?.success ? t(locale, 'testConnectionSuccess') : t(locale, 'testConnectionFailed')}
+                  description={probeResult?.chat_probe?.message}
                 />
                 <div>
-                  <Text strong>HTTP:</Text> <Text code>{String(testResult.status ?? '-')}</Text>
-                  <Text strong style={{ marginLeft: 12 }}>{t(locale, 'latency')}:</Text> <Text code>{String(testResult.latency_ms ?? 0)}ms</Text>
+                  <Text strong>{t(locale, 'modelId')}</Text> <Text code>{probeResult.requested_model}</Text>
                 </div>
                 <div>
-                  <Text strong>{t(locale, 'actualModel')}</Text> <Text code>{testResult.actual_model || '-'}</Text>
+                  <Text strong>{t(locale, 'actualModel')}</Text> <Text code>{probeResult.actual_model || '-'}</Text>
+                </div>
+                <div>
+                  <Text strong>/models:</Text> <Text code>{probeResult?.models_probe?.success ? `OK (${probeResult?.models_probe?.count || 0})` : `FAIL: ${probeResult?.models_probe?.error || '-'}`}</Text>
+                </div>
+                <div>
+                  <Text strong>HTTP:</Text> <Text code>{String(probeResult?.chat_probe?.status ?? '-')}</Text>
+                  <Text strong style={{ marginLeft: 12 }}>{t(locale, 'latency')}:</Text> <Text code>{String(probeResult?.chat_probe?.latency_ms ?? 0)}ms</Text>
+                </div>
+                <div>
+                  <Text strong>{t(locale, 'errorCategory')}</Text> <Text code>{probeResult?.chat_probe?.category || '-'}</Text>
                 </div>
                 <div>
                   <Text strong>{t(locale, 'responseText')}</Text>
                   <Card size="small" styles={{ body: { whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }} style={{ marginTop: 8 }}>
-                    {testResult.output || JSON.stringify(testResult.raw || {}, null, 2)}
+                    {probeResult?.chat_probe?.output || JSON.stringify(probeResult?.raw || {}, null, 2)}
                   </Card>
                 </div>
               </Space>
@@ -340,7 +350,7 @@ export default function ChatTest() {
           </Card>
 
           <Card title={t(locale, 'batchTestResult')} style={{ marginTop: 16 }}>
-            <Table columns={batchColumns as any} dataSource={batchResults} pagination={false} rowKey="key" locale={{ emptyText: t(locale, 'noRequests') }} scroll={{ x: 900 }} />
+            <Table columns={batchColumns as any} dataSource={batchResults} pagination={false} rowKey="key" locale={{ emptyText: t(locale, 'noRequests') }} scroll={{ x: 1200 }} />
           </Card>
         </Col>
       </Row>

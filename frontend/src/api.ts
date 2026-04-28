@@ -76,6 +76,8 @@ export const listPresets = () => api.get('/platforms/presets').then(r => r.data)
 export const fetchRemoteModels = (id: string) => api.get(`/platforms/${id}/remote-models`).then(r => r.data)
 export const importRemoteModels = (id: string, data?: { model_ids?: string[]; max_tokens?: number; context_window?: number }) => api.post(`/platforms/${id}/remote-models/import`, data || {}).then(r => r.data)
 export const testPlatformChat = (id: string, data: { model_id: string; message: string; max_tokens?: number }) => api.post(`/platforms/${id}/chat-test`, data).then(r => r.data)
+export const probePlatformModel = (id: string, data: { model_id: string; message?: string; max_tokens?: number }) => api.post(`/platforms/${id}/probe-model`, data).then(r => r.data)
+
 
 // Models
 export const listModels = () => api.get('/models').then(r => r.data)

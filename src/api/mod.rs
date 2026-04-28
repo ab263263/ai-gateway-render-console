@@ -22,6 +22,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route("/platforms/{id}/remote-models", web::get().to(platform::fetch_remote_models))
                 .route("/platforms/{id}/remote-models/import", web::post().to(platform::import_remote_models))
                 .route("/platforms/{id}/chat-test", web::post().to(platform::test_platform_chat))
+                .route("/platforms/{id}/probe-model", web::post().to(platform::probe_platform_model))
+
 
                 // 模型
                 .route("/models", web::get().to(model::list))

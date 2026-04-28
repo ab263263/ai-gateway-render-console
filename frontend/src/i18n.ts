@@ -79,6 +79,8 @@ export const translations = {
     actualModel: '实际命中模型',
     testAllModels: '测试全部模型',
     batchTestResult: '批量测试结果',
+    errorCategory: '错误分类',
+
 
 
 
@@ -287,6 +289,8 @@ export const translations = {
     actualModel: 'Actual Model',
     testAllModels: 'Test All Models',
     batchTestResult: 'Batch Test Results',
+    errorCategory: 'Error Category',
+
     modelDesc: 'Manage AI models across platforms',
 
 
