@@ -248,6 +248,12 @@ pub async fn import_remote_models(
     Ok(HttpResponse::Ok().json(import_result))
 }
 
+pub async fn test_platform_chat(
+    db: web::Data<DbPool>,
+    config: web::Data<crate::api::settings::SharedAppConfig>,
+    path: web::Path<String>,
+    body: web::Json<PlatformChatTestRequest>,
+) -> AppResult<HttpResponse> {
     let id = path.into_inner();
     let req = body.into_inner();
     let db = db.into_inner();
@@ -366,3 +372,4 @@ pub async fn import_remote_models(
         }
     }
 }
+
