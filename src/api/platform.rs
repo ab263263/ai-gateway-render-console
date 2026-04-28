@@ -345,7 +345,7 @@ pub async fn test_platform_chat(
                 "platform_id": platform.id,
                 "platform_name": platform.name,
                 "model_id": req.model_id,
-                "message": if is_success { "Chat test successful" } else { format!("API returned {}: {}", status, if error_msg.is_empty() { body_text.chars().take(300).collect::<String>() } else { error_msg }) },
+                "message": if is_success { "Chat test successful".to_string() } else { format!("API returned {}: {}", status, if error_msg.is_empty() { body_text.chars().take(300).collect::<String>() } else { error_msg }) },
                 "output": output_text,
                 "raw": json_body.unwrap_or_else(|| serde_json::json!({"text": body_text.chars().take(500).collect::<String>()}))
             })))
