@@ -35,7 +35,7 @@ fn is_admin_authorized(auth_header: Option<&header::HeaderValue>, username: &str
 }
 
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
     let app_config = ai_gateway::config::AppConfig::load_or_default();
 
