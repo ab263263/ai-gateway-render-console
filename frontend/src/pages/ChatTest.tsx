@@ -200,6 +200,7 @@ export default function ChatTest() {
           latency_ms: 0,
           category: 'platform_compat_issue',
           detail: e?.response?.data?.error?.message || e?.message || t(locale, 'testConnectionFailed'),
+          probe_status: 'unavailable',
         })
       }
     }
