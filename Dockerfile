@@ -1,5 +1,5 @@
 # Render Free Plan Dockerfile
-# Rust backend: pre-built by GitHub Actions, stored in dist/
+# Rust backend: pre-built by GitHub Actions, stored in render-bin/
 # Frontend: built in Docker (Node is lightweight, no OOM risk on Free Plan)
 
 FROM node:24-bookworm AS frontend-builder
@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib
 WORKDIR /app
 
 # Copy pre-built Rust binary (built by GitHub Actions CI)
-COPY dist/ai-gateway /app/ai-gateway
+COPY render-bin/ai-gateway /app/ai-gateway
 RUN chmod +x /app/ai-gateway
 
 # Copy frontend
@@ -31,3 +31,4 @@ ENV SQL_DSN=sqlite:///data/ai-gateway.db
 EXPOSE 1994
 
 CMD ["/app/ai-gateway"]
+

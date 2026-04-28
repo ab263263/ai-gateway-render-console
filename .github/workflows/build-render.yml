@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - 'dist/**'
+      - 'render-bin/**'
       - 'frontend/dist/**'
   workflow_dispatch:
 
@@ -47,10 +47,11 @@ jobs:
 
       - name: Commit binary to repo for Render
         run: |
-          mkdir -p dist
-          cp target/release/ai-gateway dist/ai-gateway
+          mkdir -p render-bin
+          cp target/release/ai-gateway render-bin/ai-gateway
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add dist/ai-gateway -f
+          git add render-bin/ai-gateway -f
           git diff --cached --quiet || git commit -m "chore: update pre-built binary [skip ci]"
           git push
+

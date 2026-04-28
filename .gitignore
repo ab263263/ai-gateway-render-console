@@ -4,7 +4,7 @@
 /src-tauri/config.toml
 /dist/*.tar.gz
 /static/
-# dist/ai-gateway is kept - it's the pre-built binary for Render
+# render-bin/ai-gateway is kept - it's the pre-built binary for Render
 
 # Database
 *.db
@@ -33,3 +33,4 @@ frontend/tsconfig.tsbuildinfo
 .env
 .env.local
 .gstack/
+
