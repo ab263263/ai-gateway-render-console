@@ -407,7 +407,7 @@ pub async fn probe_platform_model(
                     "status": status,
                     "latency_ms": latency_ms,
                     "category": category,
-                    "message": if success { "Probe successful" } else { error_msg },
+                    "message": if success { "Probe successful".to_string() } else { error_msg },
                     "output": output
                 },
                 "raw": json_body.unwrap_or_else(|| serde_json::json!({"text": body_text.chars().take(500).collect::<String>()}))
