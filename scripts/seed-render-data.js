@@ -1,4 +1,7 @@
-const BASE_URL = process.env.AI_GATEWAY_BASE_URL || 'http://127.0.0.1:1994';
+const APP_HOST = process.env.HOST || '127.0.0.1';
+const APP_PORT = process.env.PORT || '1994';
+const BASE_URL = process.env.AI_GATEWAY_BASE_URL || `http://${APP_HOST}:${APP_PORT}`;
+
 const AUTH_HEADER = process.env.AI_GATEWAY_BASIC_AUTH || '';
 
 const MODELS_CONFIG = [
@@ -85,30 +88,55 @@ async function ensureProxy(model) {
   throw new Error(`ensureProxy failed for ${model.id}: ${JSON.stringify(res.data)}`);
 }
 
-async function ensureRoute(proxyId, platformId, model, modelDbId) {
+async function ensureRoute(proxyId, platformId, model) {
   const existing = await apiRequest(`/api/proxies/${proxyId}/routes`);
-  if (existing.ok && Array.isArray(existing.data) && existing.data.length > 0) return true;
+  if (existing.ok && Array.isArray(existing.data) && existing.data.length > 0) {
+    const route = existing.data[0];
+    const backends = await apiRequest(`/api/routes/${route.id}/backends`);
+    if (backends.ok && Array.isArray(backends.data)) {
+      const matched = backends.data.find(b => b.platform_id === platformId && b.model_id === model.id);
+      if (matched) return true;
+      for (const backend of backends.data) {
+        await apiRequest(`/api/backends/${backend.id}`, { method: 'DELETE' });
+      }
+      const addBackendRes = await apiRequest(`/api/routes/${route.id}/backends`, {
+        method: 'POST',
+        body: JSON.stringify({
+          platform_id: platformId,
+          model_id: model.id,
+          weight: 1,
+          priority: 0,
+          capabilities: ['Tool', 'Vision', 'Reasoning'],
+        }),
+      });
+      if (addBackendRes.ok) return true;
+      throw new Error(`ensureRoute backend repair failed for ${model.id}: ${JSON.stringify(addBackendRes.data)}`);
+    }
+  }
   const res = await apiRequest(`/api/proxies/${proxyId}/routes`, {
     method: 'POST',
     body: JSON.stringify({
       lb_strategy: 'RoundRobin',
       retry_policy: { max_retries: 2, retry_on_error: ['RateLimit', 'ServerError', 'Timeout'], backoff_ms: 500 },
-      backends: [{ platform_id: platformId, model_id: modelDbId, weight: 1, priority: 0, capabilities: ['Tool', 'Vision', 'Reasoning'] }],
+      backends: [{ platform_id: platformId, model_id: model.id, weight: 1, priority: 0, capabilities: ['Tool', 'Vision', 'Reasoning'] }],
     }),
   });
   if (res.ok) return true;
   throw new Error(`ensureRoute failed for ${model.id}: ${JSON.stringify(res.data)}`);
 }
 
+
+
 async function main() {
   const groups = groupByUrl(MODELS_CONFIG);
   for (const group of groups) {
     const platformId = await ensurePlatform(group);
     for (const model of group.models) {
-      const modelId = await ensureModel(platformId, model);
+      await ensureModel(platformId, model);
       const proxyId = await ensureProxy(model);
-      await ensureRoute(proxyId, platformId, model, modelId);
+      await ensureRoute(proxyId, platformId, model);
     }
+
   }
   console.log('seed complete');
 }
