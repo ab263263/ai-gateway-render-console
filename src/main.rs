@@ -1,5 +1,6 @@
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer, HttpResponse, middleware, http::header};
+use actix_web::dev::Service;
 use actix_files as actix_files;
 use std::sync::Arc;
 use parking_lot::RwLock;
