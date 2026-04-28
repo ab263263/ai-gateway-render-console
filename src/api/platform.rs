@@ -372,9 +372,8 @@ pub async fn probe_platform_model(
             let error_msg = json_body.as_ref()
                 .and_then(|v| v.get("error"))
                 .and_then(|e| e.get("message"))
-                .and_then(|v| v.as_str())
-                .unwrap_or_else(|| body_text.chars().take(300).collect::<String>().as_str())
-                .to_string();
+                .and_then(|v| v.as_str().map(String::from))
+                .unwrap_or_else(|| body_text.chars().take(300).collect::<String>());
             let category = if success {
                 if !actual_model.is_empty() && actual_model != req.model_id { "mapped_model_mismatch" } else { "ok" }
             } else if error_msg.contains("Invalid token") || error_msg.contains("Invalid API key") {
