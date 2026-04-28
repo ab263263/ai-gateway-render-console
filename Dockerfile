@@ -17,8 +17,8 @@ WORKDIR /app
 COPY render-bin/ai-gateway /app/ai-gateway
 RUN chmod +x /app/ai-gateway
 
-# Copy frontend
-COPY --from=frontend-builder /app/frontend/dist /app/static
+# Copy frontend (vite outDir is ../static, i.e. /app/static in builder stage)
+COPY --from=frontend-builder /app/static /app/static
 
 # Copy config
 COPY config.toml /app/config.toml
