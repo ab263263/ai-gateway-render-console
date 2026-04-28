@@ -1,5 +1,5 @@
 use actix_cors::Cors;
-use actix_web::{web, App, HttpServer, HttpResponse, middleware, http::header};
+use actix_web::{web, App, HttpServer, HttpResponse, http::header};
 use actix_web::dev::Service;
 use actix_files as actix_files;
 use futures_util::future::LocalBoxFuture;
@@ -86,20 +86,19 @@ async fn main() -> std::io::Result<()> {
                         || admin_password.is_empty()
                         || is_admin_authorized(req.headers().get(header::AUTHORIZATION), &admin_username, &admin_password);
 
-                    Box::pin(async move {
-                        if !needs_admin_auth || authorized {
-                            let res = srv.call(req).await?;
-                            Ok(res.map_into_boxed_body())
-                        } else {
+                    if !needs_admin_auth || authorized {
+                        let fut = srv.call(req);
+                        Box::pin(async move { Ok(fut.await?.map_into_boxed_body()) })
+                    } else {
+                        Box::pin(async move {
                             let response = HttpResponse::Unauthorized()
                                 .insert_header((header::WWW_AUTHENTICATE, "Basic realm=\"AI Gateway Admin\""))
                                 .finish();
                             Ok(req.into_response(response).map_into_boxed_body())
-                        }
-                    })
+                        })
+                    }
                 }
             })
-            .wrap(middleware::Logger::default())
             .app_data(web::Data::new(db_pool.clone()))
             .app_data(web::Data::new(proxy_state.clone()))
             .app_data(web::Data::new(shared_config.clone()))
