@@ -3,9 +3,16 @@
 FROM rust:1-bookworm AS backend-builder
 WORKDIR /app
 
+# 安装依赖
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 
+# 优化1: 先复制依赖文件，利用缓存
 COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN cargo build --release
+RUN rm -rf src
+
+# 优化2: 再复制实际代码，只有代码变更时才重新编译
 COPY src ./src
 COPY config.toml ./config.toml
 RUN cargo build --release
