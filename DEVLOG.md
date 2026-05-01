@@ -191,14 +191,14 @@
   - 上线后验证 Proxies 页快速组池实际可用性
 
 ### 22. 快速组池补强：支持手动筛选候选并展示探测详情
-- 本轮继续补强 `Proxies` 页“快速组池”第一版，避免候选列表只能全自动纳入，用户没法精细挑选。
+- 本轮继续补强 `Proxies` 页"快速组池"第一版，避免候选列表只能全自动纳入，用户没法精细挑选。
 - 已修改：
   - `frontend/src/pages/Proxies.tsx`
   - `frontend/src/i18n.ts`
 - 新增/调整：
   - 候选表增加行选择能力，可手动勾选或取消勾选平台/模型候选
-  - 新增“详情”列，直接显示 `probe_detail`，便于区分 cooldown、兼容性问题、请求失败等原因
-  - 保持原有“探测后自动只选 healthy 候选”的逻辑，同时允许用户人工覆盖结果
+  - 新增"详情"列，直接显示 `probe_detail`，便于区分 cooldown、兼容性问题、请求失败等原因
+  - 保持原有"探测后自动只选 healthy 候选"的逻辑，同时允许用户人工覆盖结果
 - 本地验证：
   - `read_lints` 对改动文件返回 0 问题
   - 前端首次 `npm run build` 因 Node 堆内存不足失败，不是代码错误
@@ -209,6 +209,72 @@
 - 下一步：
   - 若继续走闭环，下一步应直接提交/推送到 `origin/main` 或部署仓库分支
   - 触发 Render 自动部署后重点验收 `Proxies -> 新建虚拟大模型 -> 快速组池` 的候选勾选与详情展示
+
+---
+
+## 2026-05-01
+
+### 23. P0 五项核心优化 + 平台签到余额系统 (v1.4.0)
+
+- **提交号**: `00668e2`
+- **已推送 deploy remote**，Render 已触发自动构建
+- **版本**: v1.2.0 → v1.4.0
+
+#### P0 核心优化（对标 New API 开源项目）
+
+**23.1 多Key渠道支持**
+- 新增 `platform_keys` 表，每平台支持多个 API Key
+- 加权轮询选 Key，单 Key 连续失败 3 次自动禁用，成功自动恢复
+- 代理层请求时先查 platform_keys，无可用 Key 降级使用 platform.api_key
+- 前端暂未暴露 Key 管理 UI（后续可加）
+
+**23.2 渠道自动禁用 + 健康检查**
+- platforms 表新增 `fail_count`、`consecutive_fails`、`auto_disabled`、`last_health_check`
+- 代理层每次请求成功/失败自动更新计数
+- 连续 5 次失败自动禁用平台，成功后自动恢复
+- 前端 Platforms 页显示健康状态和连续失败次数
+
+**23.3 模型名映射/别名**
+- 新增 `model_aliases` 表（alias → actual_model_id）
+- 代理层在路由前先 resolve 别名，支持 gpt-4 → gpt-4o 等透明映射
+- 新增 API: `GET/POST/DELETE /api/model-aliases`
+
+**23.4 SSE 流式错误过滤**
+- `handle_stream()` 重写：过滤空 chunk、UTF-8 校验、非法字节跳过
+- SSE 格式校验（data: / event: / id: / retry: 等行格式）
+- stream error 转为 `data: {"error":"..."}` 优雅降级而非直接断开
+- 新增 `X-Accel-Buffering: no` header 防代理缓冲
+
+**23.5 请求日志系统**
+- 新增 `request_logs` 表（14 个字段：timestamp, platform, model, proxy, status, latency, tokens, error 等）
+- 新增 API: `GET /api/logs` 支持分页 + 多维过滤（platform_id, model_id, status_code, 时间范围）
+- 前端新增 Logs 页面（第 8 个 Tab），支持筛选和分页
+
+#### 平台签到余额系统
+
+**23.6 NewAPI 签到协议对接**
+- DB Schema V7: 新增 `checkin_logs` 表，platforms 新增 8 个签到/余额字段
+- `src/checkin.rs`: 签到服务，调用 NewAPI 的 `/api/user/checkin` + Cookie 认证
+- 余额查询: `GET /api/user/self` → quota - used_quota
+- 平台级开关: `checkin_enabled`（支持签到才开启）+ `auto_checkin`（每日自动签到）
+- 新增 API: `POST /api/checkin`, `POST /api/checkin/{id}`, `GET /api/balances`, `POST /api/balances/refresh`, `GET /api/checkin-logs`
+- 前端: Platforms 页新增余额列 + 签到按钮 + 编辑弹窗签到配置区
+
+#### DB 迁移
+- V6: platform_keys, model_aliases, request_logs, platforms 健康字段
+- V7: checkin_logs, platforms 签到/余额字段
+- 迁移向后兼容，ALTER TABLE ADD COLUMN 用 IF IGNORE 容错
+
+#### 文件变更清单（29 个文件，+2108 / -145 行）
+- 新增 10 个文件: Logs.tsx, checkin.rs, checkin API/DB, model_alias API/DB, platform_key API/DB, request_log API/DB
+- 修改 19 个文件: schema.rs, mod.rs, platform.rs, handler.rs, App.tsx, api.ts, i18n.ts, Platforms.tsx, Cargo.toml 等
+
+#### 待验证
+- [ ] Render 构建是否成功（Docker 直编 Rust）
+- [ ] DB V6/V7 迁移是否自动执行
+- [ ] 签到接口 `/api/checkin` 线上可用性
+- [ ] 余额显示是否正确
+- [ ] Logs 页面线上是否可访问
 
 
 
