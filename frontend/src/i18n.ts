@@ -260,6 +260,13 @@ export const translations = {
     checkinLogs: '签到记录',
     quotaAdded: '获得额度',
     balanceAfter: '签到后余额',
+    quota: '配额',
+    lastCheckin: '最后签到',
+    actions: '操作',
+    platform: '平台',
+    result: '结果',
+    time: '时间',
+    error: '错误',
   },
   en: {
     appTitle: 'AI Gateway',
@@ -503,6 +510,13 @@ export const translations = {
     checkinLogs: 'Checkin Logs',
     quotaAdded: 'Quota Added',
     balanceAfter: 'Balance After',
+    quota: 'Quota',
+    lastCheckin: 'Last Check-in',
+    actions: 'Actions',
+    platform: 'Platform',
+    result: 'Result',
+    time: 'Time',
+    error: 'Error',
   },
 } as const
 
