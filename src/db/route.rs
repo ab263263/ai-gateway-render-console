@@ -10,8 +10,8 @@ pub fn get_by_proxy(pool: &DbPool, proxy_id: &str) -> AppResult<Option<Route>> {
         [proxy_id],
         |row| Ok(Route {
             id: row.get(0)?, proxy_id: row.get(1)?,
-            lb_strategy: serde_json::from_str(&row.get::<_, String>(2)?).unwrap_or(LBStrategy::RoundRobin),
-            retry_policy: serde_json::from_str(&row.get::<_, String>(3)?).unwrap_or_default(),
+            lb_strategy: serde_json::from_str::<LBStrategy>(&row.get::<_, String>(2)?).unwrap_or(LBStrategy::RoundRobin),
+            retry_policy: serde_json::from_str::<RetryPolicy>(&row.get::<_, String>(3)?).unwrap_or_default(),
             fallback: row.get(4)?,
             backends: vec![],
         }),
@@ -34,8 +34,8 @@ pub fn get(pool: &DbPool, id: &str) -> AppResult<Route> {
         [id],
         |row| Ok(Route {
             id: row.get(0)?, proxy_id: row.get(1)?,
-            lb_strategy: serde_json::from_str(&row.get::<_, String>(2)?).unwrap_or(LBStrategy::RoundRobin),
-            retry_policy: serde_json::from_str(&row.get::<_, String>(3)?).unwrap_or_default(),
+            lb_strategy: serde_json::from_str::<LBStrategy>(&row.get::<_, String>(2)?).unwrap_or(LBStrategy::RoundRobin),
+            retry_policy: serde_json::from_str::<RetryPolicy>(&row.get::<_, String>(3)?).unwrap_or_default(),
             fallback: row.get(4)?,
             backends: vec![],
         }),
