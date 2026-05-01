@@ -1,6 +1,7 @@
 use crate::error::AppResult;
 use crate::db::DbPool;
 use serde::{Deserialize, Serialize};
+use chrono::Utc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckinLog {

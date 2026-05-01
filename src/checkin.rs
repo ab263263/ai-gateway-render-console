@@ -12,6 +12,7 @@ use crate::db::DbPool;
 use crate::db::checkin::{CheckinLog, PlatformCheckinConfig};
 use crate::error::AppResult;
 use serde::Deserialize;
+use chrono::Utc;
 
 #[derive(Debug, Deserialize)]
 struct ApiResponse<T> {
