@@ -243,7 +243,7 @@ impl AppConfig {
 
                         }
                     };
-                    let mut config = env_cfg.clone();
+                    let mut config = Self::default();
 
                     if let Some(server) = value.get("server") {
                         if let Some(v) = server.get("host").and_then(|v| v.as_str()) {
@@ -293,6 +293,23 @@ impl AppConfig {
                             config.defaults.test_connection_timeout_secs = v as u64;
                         }
                     }
+
+                    if let Ok(v) = std::env::var("HOST") { config.server.host = v; }
+                    if let Ok(v) = std::env::var("PORT") { if let Ok(p) = v.parse::<u16>() { config.server.admin_port = p; } }
+                    if let Ok(v) = std::env::var("LOG_LEVEL") { config.server.log_level = v; }
+                    if let Ok(v) = std::env::var("SQL_DSN") {
+                        if let Some(path) = v.strip_prefix("sqlite:///") {
+                            config.database.path = PathBuf::from(path);
+                        }
+                    }
+                    if let Ok(v) = std::env::var("API_KEY_ENCRYPTION_KEY") { config.security.encrypt_key = v; }
+                    if let Ok(v) = std::env::var("ADMIN_TOKEN") { config.security.admin_token = v; }
+                    if let Ok(v) = std::env::var("ADMIN_USERNAME") { config.security.admin_username = v; }
+                    if let Ok(v) = std::env::var("ADMIN_PASSWORD") { config.security.admin_password = v; }
+                    if let Ok(v) = std::env::var("REQUEST_TIMEOUT_SECS") { if let Ok(n) = v.parse::<u64>() { config.defaults.request_timeout_secs = n; } }
+                    if let Ok(v) = std::env::var("TEST_CONNECTION_TIMEOUT_SECS") { if let Ok(n) = v.parse::<u64>() { config.defaults.test_connection_timeout_secs = n; } }
+                    if let Ok(v) = std::env::var("MAX_RETRIES") { if let Ok(n) = v.parse::<u32>() { config.defaults.max_retries = n; } }
+
                     config
                 }
                 Err(e) => {

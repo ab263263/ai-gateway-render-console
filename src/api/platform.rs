@@ -31,6 +31,101 @@ fn extract_model_from_output(output: &str) -> Option<String> {
     None
 }
 
+fn extract_anthropic_output(json_body: Option<&serde_json::Value>) -> String {
+    json_body
+        .and_then(|v| v.get("content"))
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|v| v.get("text"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn extract_openai_output(json_body: Option<&serde_json::Value>) -> String {
+    json_body
+        .and_then(|v| v.get("choices"))
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|v| v.get("message"))
+        .and_then(|v| v.get("content"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn normalize_protocol_targets(platform_type: &PlatformType, protocols: Option<Vec<String>>) -> Vec<String> {
+    let requested = protocols.unwrap_or_else(|| vec!["openai".to_string(), "anthropic".to_string()]);
+    let mut normalized = Vec::new();
+
+    for protocol in requested {
+        let p = protocol.trim().to_lowercase();
+        if p == "openai" || p == "anthropic" {
+            normalized.push(p);
+        }
+    }
+
+    if normalized.is_empty() {
+        normalized = vec!["openai".to_string(), "anthropic".to_string()];
+    }
+
+    if matches!(platform_type, PlatformType::Anthropic) && !normalized.iter().any(|p| p == "anthropic") {
+        normalized.push("anthropic".to_string());
+    }
+
+    normalized.sort();
+    normalized.dedup();
+    normalized
+}
+
+fn protocol_supported_by_platform(platform_type: &PlatformType, protocol: &str) -> bool {
+    match protocol {
+        "anthropic" => true,
+        "openai" => !matches!(platform_type, PlatformType::Anthropic),
+        _ => false,
+    }
+}
+
+fn build_protocol_request(
+    client: &reqwest::Client,
+    base_url: &str,
+    api_key: &str,
+    protocol: &str,
+    model_id: &str,
+    content: &str,
+    max_tokens: u32,
+) -> reqwest::RequestBuilder {
+    match protocol {
+        "anthropic" => {
+            let mut request = client.post(format!("{}/v1/messages", base_url))
+                .header("anthropic-version", "2023-06-01")
+                .header("content-type", "application/json")
+                .json(&serde_json::json!({
+                    "model": model_id,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "user", "content": content}]
+                }));
+            if !api_key.is_empty() {
+                request = request.header("x-api-key", api_key);
+            }
+            request
+        }
+        _ => {
+            let mut request = client.post(format!("{}/chat/completions", base_url))
+                .header("content-type", "application/json")
+                .json(&serde_json::json!({
+                    "model": model_id,
+                    "max_tokens": max_tokens,
+                    "messages": [{"role": "user", "content": content}]
+                }));
+            if !api_key.is_empty() {
+                request = request.header("Authorization", format!("Bearer {}", api_key));
+            }
+            request
+        }
+    }
+}
+
 fn resolve_actual_model(json_body: Option<&serde_json::Value>, output: &str) -> String {
     let response_model = json_body
         .and_then(|v| v.get("model"))
@@ -53,6 +148,7 @@ pub struct PlatformChatTestRequest {
     pub max_tokens: Option<u32>,
 }
 
+
 #[derive(Debug, serde::Deserialize)]
 pub struct ImportRemoteModelsRequest {
     pub model_ids: Option<Vec<String>>,
@@ -65,7 +161,9 @@ pub struct PlatformProbeRequest {
     pub model_id: String,
     pub message: Option<String>,
     pub max_tokens: Option<u32>,
+    pub protocols: Option<Vec<String>>,
 }
+
 
 
 

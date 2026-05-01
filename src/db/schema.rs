@@ -40,6 +40,33 @@ pub fn run_migrations(conn: &Connection) -> AppResult<()> {
         tracing::info!("Database migrated to V5 (backends.model_id now stores model ID string directly)");
     }
 
+    if current_version < 6 {
+        conn.execute_batch(SCHEMA_V6_MIGRATION)?;
+        // Add health columns to platforms table (ignore if already exist)
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN consecutive_fails INTEGER NOT NULL DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN auto_disabled INTEGER NOT NULL DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN last_health_check TEXT", []);
+        conn.execute("INSERT OR REPLACE INTO _schema_version (id, value) VALUES (1, 6)", [])?;
+        tracing::info!("Database migrated to V6 (platform_keys, model_aliases, request_logs, platform health)");
+    }
+
+    if current_version < 7 {
+        conn.execute_batch(SCHEMA_V7_MIGRATION)?;
+        // Add checkin/balance columns to platforms table (ignore if already exist)
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN checkin_session TEXT", []);
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN checkin_user_id TEXT", []);
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN auto_checkin INTEGER NOT NULL DEFAULT 0", []);
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN balance REAL", []);
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN quota REAL", []);
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN used_quota REAL", []);
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN last_checkin TEXT", []);
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN last_balance_check TEXT", []);
+        let _ = conn.execute("ALTER TABLE platforms ADD COLUMN checkin_enabled INTEGER NOT NULL DEFAULT 0", []);
+        conn.execute("INSERT OR REPLACE INTO _schema_version (id, value) VALUES (1, 7)", [])?;
+        tracing::info!("Database migrated to V7 (platform checkin & balance)");
+    }
+
     Ok(())
 }
 
@@ -220,4 +247,85 @@ INSERT OR IGNORE INTO backends_new (id, route_id, platform_id, model_id, weight,
 
 DROP TABLE IF EXISTS backends;
 ALTER TABLE backends_new RENAME TO backends;
+"#;
+
+// Migration V6: platform_keys (multi-key), model_aliases, request_logs, platform health fields
+const SCHEMA_V6_MIGRATION: &str = r#"
+-- Multi-key support: each platform can have multiple API keys
+CREATE TABLE IF NOT EXISTS platform_keys (
+    id              TEXT PRIMARY KEY,
+    platform_id     TEXT NOT NULL REFERENCES platforms(id) ON DELETE CASCADE,
+    api_key         TEXT NOT NULL,
+    weight          INTEGER NOT NULL DEFAULT 1,
+    status          TEXT NOT NULL DEFAULT 'Active',
+    fail_count      INTEGER NOT NULL DEFAULT 0,
+    last_used       TEXT,
+    last_fail       TEXT,
+    created_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_platform_keys_platform ON platform_keys(platform_id);
+CREATE INDEX IF NOT EXISTS idx_platform_keys_status ON platform_keys(status);
+
+-- Model alias/mapping support
+CREATE TABLE IF NOT EXISTS model_aliases (
+    id              TEXT PRIMARY KEY,
+    alias           TEXT NOT NULL UNIQUE,
+    actual_model_id TEXT NOT NULL,
+    created_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_aliases_alias ON model_aliases(alias);
+
+-- Detailed request logs
+CREATE TABLE IF NOT EXISTS request_logs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       TEXT NOT NULL,
+    platform_id     TEXT,
+    platform_name   TEXT,
+    model_id        TEXT,
+    proxy_name      TEXT,
+    status_code     INTEGER,
+    latency_ms      INTEGER,
+    token_input     INTEGER,
+    token_output    INTEGER,
+    error_type      TEXT,
+    error_message   TEXT,
+    is_stream       INTEGER NOT NULL DEFAULT 0,
+    api_key_name    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_request_logs_timestamp ON request_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_request_logs_platform ON request_logs(platform_id);
+CREATE INDEX IF NOT EXISTS idx_request_logs_model ON request_logs(model_id);
+CREATE INDEX IF NOT EXISTS idx_request_logs_status ON request_logs(status_code);
+
+-- Add health check fields to platforms
+-- SQLite doesn't support ALTER TABLE ADD COLUMN IF NOT EXISTS, so we use a safe approach
+-- These columns are added conditionally in the migration code
+"#;
+
+// Migration V7: platform checkin & balance support
+const SCHEMA_V7_MIGRATION: &str = r#"
+-- checkin_session: session cookie value for NewAPI auth
+-- checkin_user_id: user id for NewAPI auth header
+-- auto_checkin: 1=enabled, 0=disabled
+-- checkin_enabled: 1=platform supports checkin, 0=not applicable
+-- balance/quota/used_quota: cached balance info
+-- last_checkin/last_balance_check: timestamps
+-- Columns added conditionally in migration code above
+CREATE TABLE IF NOT EXISTS checkin_logs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform_id     TEXT NOT NULL,
+    platform_name   TEXT NOT NULL,
+    result          TEXT,
+    quota_added     REAL,
+    balance_after   REAL,
+    success         INTEGER NOT NULL DEFAULT 0,
+    error_message   TEXT,
+    checked_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_checkin_logs_platform ON checkin_logs(platform_id);
+CREATE INDEX IF NOT EXISTS idx_checkin_logs_checked_at ON checkin_logs(checked_at);
 "#;

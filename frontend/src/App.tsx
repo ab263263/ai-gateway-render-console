@@ -4,6 +4,7 @@ import {
   DashboardOutlined, CloudServerOutlined, ApiOutlined,
   SunOutlined, MoonOutlined, DesktopOutlined, GlobalOutlined,
   BookOutlined, SettingOutlined, GithubOutlined, KeyOutlined, RobotOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
@@ -13,6 +14,7 @@ import ApiKeys from './pages/ApiKeys'
 import Settings from './pages/Settings'
 import Models from './pages/Models'
 import ChatTest from './pages/ChatTest'
+import Logs from './pages/Logs'
 import { useAppContext } from './ThemeContext'
 import { t, type Locale, type ThemeMode } from './i18n'
 
@@ -26,6 +28,7 @@ const TAB_ITEMS = [
   { key: '/proxies', icon: <ApiOutlined style={{ fontSize: 18 }} />, color: '#eb2f96', label: 'proxies' },
   { key: '/chat-test', icon: <ApiOutlined style={{ fontSize: 18 }} />, color: '#fa8c16', label: 'chatTest' },
   { key: '/api-keys', icon: <KeyOutlined style={{ fontSize: 18 }} />, color: '#faad14', label: 'apiKeys' },
+  { key: '/logs', icon: <FileTextOutlined style={{ fontSize: 18 }} />, color: '#52c41a', label: 'requestLogs' },
   { key: '/settings', icon: <SettingOutlined style={{ fontSize: 18 }} />, color: '#8c8c8c', label: 'settings' },
 ]
 
@@ -69,7 +72,7 @@ export default function App() {
           <img src="./logo.png" alt="" style={{ width: 26, height: 26, flexShrink: 0 }} />
           <div style={{ overflow: 'hidden' }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: token.colorPrimary, lineHeight: '18px', whiteSpace: 'nowrap' }}>AI Gateway</div>
-            <div style={{ fontSize: 10, color: token.colorTextSecondary, lineHeight: '13px', whiteSpace: 'nowrap' }}>{t(locale, 'appSubtitle')} v1.1.1</div>
+            <div style={{ fontSize: 10, color: token.colorTextSecondary, lineHeight: '13px', whiteSpace: 'nowrap' }}>{t(locale, 'appSubtitle')} v1.2.0</div>
           </div>
         </div>
 
@@ -162,6 +165,7 @@ export default function App() {
           <Route path="/proxies" element={<Proxies />} />
           <Route path="/chat-test" element={<ChatTest />} />
           <Route path="/api-keys" element={<ApiKeys />} />
+          <Route path="/logs" element={<Logs />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </Content>
@@ -203,10 +207,11 @@ function DocZh() {
       </Paragraph>
       <Divider />
       <Title level={5}>🔗 第一步：添加 AI 平台</Title>
-      <Paragraph>平台是你 AI 模型的来源，比如 OpenAI、Anthropic、NVIDIA 等。每个平台需要配置 API 地址和 API Key。</Paragraph>
+      <Paragraph>平台是你 AI 模型的来源，比如 OpenAI、Anthropic、NVIDIA 等。每个平台需要配置 API 地址和 API Key。支持为每个平台配置多个 Key 做轮询。</Paragraph>
       <ol>
         <li>进入「<Text strong>平台</Text>」页面，点击「<Text strong>添加平台</Text>」</li>
         <li>选择预设平台或手动填写，配置 API Key 后保存</li>
+        <li>在平台详情中可添加多个 Key，系统自动轮询和故障切换</li>
       </ol>
       <Title level={5}>🤖 第二步：添加模型</Title>
       <Paragraph>每个平台上可能有多个 AI 模型，你需要把要使用的模型添加进来。</Paragraph>
@@ -221,20 +226,16 @@ function DocZh() {
         <li>进入「聊天测试」页面，选择平台、模型并发送测试消息</li>
       </ol>
       <Title level={5}>🔌 第四步：创建虚拟大模型</Title>
-      <Paragraph>虚拟大模型的名称即为对外暴露的模型 ID，后端可以挂载多个平台大模型实现负载均衡。默认同时支持 OpenAI 和 Anthropic 协议。</Paragraph>
+      <Paragraph>虚拟大模型的名称即为对外暴露的模型 ID，后端可以挂载多个平台大模型实现负载均衡。支持模型别名映射。</Paragraph>
       <ol>
         <li>进入「<Text strong>虚拟大模型</Text>」页面，点击「新建虚拟大模型」</li>
         <li>填写名称（即对外模型 ID，如 <Text code>qc480</Text>），添加后端大模型</li>
       </ol>
       <Title level={5}>🔑 第五步：创建 API Key</Title>
-      <Paragraph>在「API Key」页面创建 API Key，用于 API 访问认证。API Key 全局通用，无需绑定特定虚拟大模型。</Paragraph>
-      <ol>
-        <li>进入「<Text strong>API Key</Text>」页面，点击「新建 API Key」</li>
-        <li>填写名称，密钥自动生成，请立即复制保存</li>
-      </ol>
+      <Paragraph>在「API Key」页面创建 API Key，用于 API 访问认证。</Paragraph>
+      <Title level={5}>📊 请求日志</Title>
+      <Paragraph>在「日志」页面可查看所有请求的详细记录，支持按平台、模型、状态码筛选。</Paragraph>
       <Title level={5}>📡 API 调用方式</Title>
-      <Paragraph>假设管理端口为 <Text code>1994</Text>，虚拟大模型名称为 <Text code>qc480</Text>：</Paragraph>
-      <Text strong>OpenAI 兼容接口：</Text>
       <div style={codeStyle}>{`POST http://localhost:1994/v1/chat/completions
 Content-Type: application/json
 Authorization: Bearer <your-api-key>
@@ -272,15 +273,17 @@ function DocEn() {
       </Paragraph>
       <Divider />
       <Title level={5}>1. Add platforms</Title>
-      <Paragraph>Add upstream providers with API base URL and API key.</Paragraph>
+      <Paragraph>Add upstream providers with API base URL and API key. Supports multi-key rotation per platform.</Paragraph>
       <Title level={5}>2. Add models</Title>
-      <Paragraph>Manage models per platform and fetch remote model IDs when available.</Paragraph>
+      <Paragraph>Manage models per platform and fetch remote model IDs when available. Model alias mapping supported.</Paragraph>
       <Title level={5}>3. Chat test</Title>
-      <Paragraph>Use the Chat Test page to pick a platform and remote model, then send a quick validation message.</Paragraph>
+      <Paragraph>Use the Chat Test page to validate upstream connectivity.</Paragraph>
       <Title level={5}>4. Create virtual models</Title>
       <Paragraph>Create virtual models as the public-facing unified model IDs for clients.</Paragraph>
       <Title level={5}>5. Create API keys</Title>
       <Paragraph>Create admin-generated API keys for client access.</Paragraph>
+      <Title level={5}>6. Request logs</Title>
+      <Paragraph>View detailed request logs with platform, model, and status code filters.</Paragraph>
       <Title level={5}>API Example</Title>
       <div style={codeStyle}>{`POST http://localhost:1994/v1/chat/completions
 Content-Type: application/json

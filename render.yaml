@@ -5,6 +5,10 @@ services:
     plan: free
     healthCheckPath: /health
     autoDeploy: true
+    disk:
+      name: ai-gateway-data
+      mountPath: /data
+      sizeGB: 10
     envVars:
       - key: HOST
         value: 0.0.0.0

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Col, Input, InputNumber, Row, Select, Space, Table, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Col, Input, InputNumber, Row, Select, Space, Table, Tag, Typography, message, Grid } from 'antd'
 import { ApiOutlined, SendOutlined, PlayCircleOutlined } from '@ant-design/icons'
 import { listPlatforms, fetchRemoteModels, probePlatformModel, testPlatformChat } from '../api'
 import { useAppContext } from '../ThemeContext'
@@ -35,6 +35,8 @@ type ProbeRow = {
 
 export default function ChatTest() {
   const { locale } = useAppContext()
+  const screens = Grid.useBreakpoint()
+  const isMobile = !screens.md
   const [platforms, setPlatforms] = useState<any[]>([])
   const [loadingPlatforms, setLoadingPlatforms] = useState(false)
   const [selectedPlatformId, setSelectedPlatformId] = useState<string>()
@@ -238,13 +240,22 @@ export default function ChatTest() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: isMobile ? 'stretch' : 'center',
+          marginBottom: 16,
+          gap: 12,
+          flexDirection: isMobile ? 'column' : 'row',
+        }}
+      >
         <Title level={5} style={{ margin: 0 }}>{t(locale, 'chatTest')}</Title>
-        <Space>
-          <Button icon={<ApiOutlined />} onClick={() => handleFetchModels()} loading={loadingModels} disabled={!selectedPlatformId}>
+        <Space direction={isMobile ? 'vertical' : 'horizontal'} style={isMobile ? { width: '100%' } : undefined}>
+          <Button icon={<ApiOutlined />} onClick={() => handleFetchModels()} loading={loadingModels} disabled={!selectedPlatformId} block={isMobile}>
             {t(locale, 'fetchFromPlatform')}
           </Button>
-          <Button icon={<PlayCircleOutlined />} onClick={handleTestAll} loading={testingAll} disabled={!selectedPlatformId || currentModels.length === 0}>
+          <Button icon={<PlayCircleOutlined />} onClick={handleTestAll} loading={testingAll} disabled={!selectedPlatformId || currentModels.length === 0} block={isMobile}>
             {t(locale, 'testAllModels')}
           </Button>
         </Space>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Button, Table, Modal, Form, Input, Select, Tag, Space,
-  message, Card, Drawer, Descriptions, Divider, Row, Col, Popconfirm, Typography, InputNumber, Tabs,
+  message, Card, Drawer, Descriptions, Divider, Row, Col, Popconfirm, Typography, InputNumber, Tabs, Grid,
 } from 'antd'
 import {
   PlusOutlined, DeleteOutlined, LoadingOutlined,
@@ -75,6 +75,8 @@ export default function Proxies() {
   const [quickPoolCandidates, setQuickPoolCandidates] = useState<QuickPoolCandidate[]>([])
   const [quickPoolLoading, setQuickPoolLoading] = useState(false)
   const [quickPoolProbing, setQuickPoolProbing] = useState(false)
+  const screens = Grid.useBreakpoint()
+  const isMobile = !screens.md
 
   useEffect(() => { loadAll(); loadAdminPort() }, [])
 
@@ -357,13 +359,13 @@ export default function Proxies() {
     {
       title: t(locale, 'action'),
       key: 'action',
-      width: 120,
+      width: isMobile ? 132 : 120,
       render: (_: any, record: any) => (
-        <Space>
-          <Button type="text" size="small" icon={<CodeOutlined />} onClick={() => openUsageModal(record)} />
-          <Button type="text" size="small" icon={<SettingOutlined />} onClick={() => openDetail(record)} />
+        <Space direction={isMobile ? 'vertical' : 'horizontal'} size={isMobile ? 4 : 8}>
+          <Button type="text" size="small" icon={<CodeOutlined />} onClick={() => openUsageModal(record)} block={isMobile} />
+          <Button type="text" size="small" icon={<SettingOutlined />} onClick={() => openDetail(record)} block={isMobile} />
           <Popconfirm title={t(locale, 'deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
-            <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+            <Button type="text" danger size="small" icon={<DeleteOutlined />} block={isMobile} />
           </Popconfirm>
         </Space>
       ),
@@ -478,9 +480,18 @@ Model: ${modelName}`
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: isMobile ? 'stretch' : 'center',
+          marginBottom: 16,
+          gap: 12,
+          flexDirection: isMobile ? 'column' : 'row',
+        }}
+      >
         <Title level={5} style={{ margin: 0 }}>{t(locale, 'proxies')}</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>{t(locale, 'newProxy')}</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)} block={isMobile}>{t(locale, 'newProxy')}</Button>
       </div>
 
       <Card styles={{ body: { padding: 0 } }}>
@@ -496,19 +507,19 @@ Model: ${modelName}`
           <Card size="small" title={t(locale, 'quickPool')} style={{ marginBottom: 16 }}>
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
               <Text type="secondary">{t(locale, 'quickPoolDesc')}</Text>
-              <Row gutter={8}>
-                <Col span={12}>
+              <Row gutter={[8, 8]}>
+                <Col xs={24} md={12}>
                   <Input
                     value={quickPoolModelId}
                     onChange={(e) => setQuickPoolModelId(e.target.value)}
                     placeholder={t(locale, 'quickPoolModelIdPlaceholder')}
                   />
                 </Col>
-                <Col span={12}>
-                  <Space wrap>
-                    <Button onClick={handleScanQuickPoolCandidates} loading={quickPoolLoading}>{t(locale, 'quickPoolLoadCandidates')}</Button>
-                    <Button type="primary" onClick={handleProbeQuickPoolCandidates} loading={quickPoolProbing} disabled={quickPoolCandidates.length === 0}>{t(locale, 'quickPoolProbeCandidates')}</Button>
-                    <Button onClick={() => applyQuickPoolCandidates(quickPoolCandidates)} disabled={quickPoolCandidates.length === 0}>{t(locale, 'quickPoolOnlyHealthy')}</Button>
+                <Col xs={24} md={12}>
+                  <Space direction={isMobile ? 'vertical' : 'horizontal'} wrap style={isMobile ? { width: '100%' } : undefined}>
+                    <Button onClick={handleScanQuickPoolCandidates} loading={quickPoolLoading} block={isMobile}>{t(locale, 'quickPoolLoadCandidates')}</Button>
+                    <Button type="primary" onClick={handleProbeQuickPoolCandidates} loading={quickPoolProbing} disabled={quickPoolCandidates.length === 0} block={isMobile}>{t(locale, 'quickPoolProbeCandidates')}</Button>
+                    <Button onClick={() => applyQuickPoolCandidates(quickPoolCandidates)} disabled={quickPoolCandidates.length === 0} block={isMobile}>{t(locale, 'quickPoolOnlyHealthy')}</Button>
                   </Space>
                 </Col>
               </Row>
@@ -520,6 +531,16 @@ Model: ${modelName}`
                   rowKey="key"
                   pagination={false}
                   dataSource={quickPoolCandidates}
+                  rowSelection={{
+                    selectedRowKeys: quickPoolCandidates.filter(item => item.selected).map(item => item.key),
+                    onChange: (selectedRowKeys) => {
+                      const selectedKeySet = new Set(selectedRowKeys.map(String))
+                      setQuickPoolCandidates(prev => prev.map(item => ({
+                        ...item,
+                        selected: selectedKeySet.has(item.key),
+                      })))
+                    },
+                  }}
                   columns={[
                     { title: t(locale, 'platforms'), dataIndex: 'platform_name', key: 'platform_name', render: (v: string) => <Tag>{v}</Tag> },
                     { title: t(locale, 'modelId'), dataIndex: 'model_id', key: 'model_id', render: (v: string) => <Text code>{v}</Text> },
@@ -527,6 +548,7 @@ Model: ${modelName}`
                     { title: t(locale, 'quickPoolProbeStatus'), dataIndex: 'probe_status', key: 'probe_status', width: 130, render: (v: string) => <Tag color={v === 'available' ? 'success' : v === 'mapped_model_mismatch' ? 'warning' : v === 'cooldown' ? 'processing' : v === 'untested' ? 'default' : 'error'}>{v}</Tag> },
                     { title: t(locale, 'actualModel'), dataIndex: 'actual_model', key: 'actual_model', render: (v: string) => v ? <Text code>{v}</Text> : '-' },
                     { title: t(locale, 'errorCategory'), dataIndex: 'probe_category', key: 'probe_category', render: (v: string) => v || '-' },
+                    { title: t(locale, 'detail'), dataIndex: 'probe_detail', key: 'probe_detail', render: (v: string) => v ? <Text type="secondary">{v}</Text> : '-' },
                   ]}
                 />
               )}

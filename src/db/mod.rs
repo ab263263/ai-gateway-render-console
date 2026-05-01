@@ -1,10 +1,14 @@
 pub mod schema;
 pub mod platform;
+pub mod platform_key;
 pub mod model;
+pub mod model_alias;
 pub mod proxy;
 pub mod route;
 pub mod stats;
+pub mod request_log;
 pub mod api_key;
+pub mod checkin;
 
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
@@ -26,11 +30,11 @@ pub fn init_pool(db_path: &Path) -> Result<DbPool, AppError> {
         .max_size(8)
         .build(manager)
         .map_err(|e| AppError::Internal(format!("Failed to create connection pool: {}", e)))?;
-    
+
     // Run migrations on one connection
     let conn = pool.get().map_err(|e| AppError::Internal(format!("Failed to get connection: {}", e)))?;
     schema::run_migrations(&conn)?;
-    
+
     Ok(pool)
 }
 

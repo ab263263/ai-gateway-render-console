@@ -25,6 +25,22 @@ const MODELS_CONFIG = [
   { id: 'gpt-5.4-mini-otokapi', name: 'GPT-5.4 Mini (otokapi)', url: 'https://otokapi.com/v1', apiKey: 'sk-41c3366ce2d38d745ab4417319ddc36d70cec5d8e25f9d8e5b8416e6b0aec5ee', maxInputTokens: 400000, maxOutputTokens: 65536 },
   { id: 'gpt-5.3-codex-otokapi', name: 'GPT-5.3 Codex (otokapi)', url: 'https://otokapi.com/v1', apiKey: 'sk-41c3366ce2d38d745ab4417319ddc36d70cec5d8e25f9d8e5b8416e6b0aec5ee', maxInputTokens: 400000, maxOutputTokens: 65536 },
   { id: 'gpt-5.2-otokapi', name: 'GPT-5.2 (otokapi)', url: 'https://otokapi.com/v1', apiKey: 'sk-41c3366ce2d38d745ab4417319ddc36d70cec5d8e25f9d8e5b8416e6b0aec5ee', maxInputTokens: 400000, maxOutputTokens: 65536 },
+
+  // WorkBuddy 自定义模型
+  { id: 'gpt-5.4', name: 'GPT-5.4 (WorkBuddy)', url: 'https://hiapi.work/v1', apiKey: 'sk-JevCamIEljvYJdV5mDuWOP4K3VKPx8FY2aSz5ER6PH24g4pE', maxInputTokens: 400000, maxOutputTokens: 65536 },
+  { id: 'minimax-2.7-preview', name: 'MiniMax 2.7 极速版 (WorkBuddy)', url: 'https://hiapi.work/v1', apiKey: 'sk-JevCamIEljvYJdV5mDuWOP4K3VKPx8FY2aSz5ER6PH24g4pE', maxInputTokens: 262144, maxOutputTokens: 65536 },
+
+  // CC Switch 常用全量模型地址
+  { id: 'gpt-5.4-ccswitch', name: 'GPT-5.4 (CC Switch)', url: 'https://api.zaixianshauti.top/v1', apiKey: 'sk-YOy99Mw8fmEM585PriPd6VNkP5Vp5ybUeS4mdKA4Xe7jYZF9', maxInputTokens: 400000, maxOutputTokens: 65536 },
+  { id: 'gpt-5.3-codex-ccswitch', name: 'GPT-5.3 Codex (CC Switch)', url: 'https://api.zaixianshauti.top/v1', apiKey: 'sk-YOy99Mw8fmEM585PriPd6VNkP5Vp5ybUeS4mdKA4Xe7jYZF9', maxInputTokens: 400000, maxOutputTokens: 65536 },
+  { id: 'claude-sonnet-4-5-ccswitch', name: 'Claude Sonnet 4.5 (CC Switch)', url: 'https://api.zaixianshauti.top/v1', apiKey: 'sk-YOy99Mw8fmEM585PriPd6VNkP5Vp5ybUeS4mdKA4Xe7jYZF9', maxInputTokens: 200000, maxOutputTokens: 65536 },
+  { id: 'claude-opus-4-6-ccswitch', name: 'Claude Opus 4.6 (CC Switch)', url: 'https://api.zaixianshauti.top/v1', apiKey: 'sk-YOy99Mw8fmEM585PriPd6VNkP5Vp5ybUeS4mdKA4Xe7jYZF9', maxInputTokens: 200000, maxOutputTokens: 65536 },
+  { id: 'gemini-2.5-pro-ccswitch', name: 'Gemini 2.5 Pro (CC Switch)', url: 'https://api.zaixianshauti.top/v1', apiKey: 'sk-YOy99Mw8fmEM585PriPd6VNkP5Vp5ybUeS4mdKA4Xe7jYZF9', maxInputTokens: 1048576, maxOutputTokens: 65536 },
+  { id: 'gemini-2.5-flash-ccswitch', name: 'Gemini 2.5 Flash (CC Switch)', url: 'https://api.zaixianshauti.top/v1', apiKey: 'sk-YOy99Mw8fmEM585PriPd6VNkP5Vp5ybUeS4mdKA4Xe7jYZF9', maxInputTokens: 1048576, maxOutputTokens: 65536 },
+  { id: 'deepseek-r1-ccswitch', name: 'DeepSeek R1 (CC Switch)', url: 'https://api.zaixianshauti.top/v1', apiKey: 'sk-YOy99Mw8fmEM585PriPd6VNkP5Vp5ybUeS4mdKA4Xe7jYZF9', maxInputTokens: 131072, maxOutputTokens: 65536 },
+  { id: 'deepseek-v3-ccswitch', name: 'DeepSeek V3 (CC Switch)', url: 'https://api.zaixianshauti.top/v1', apiKey: 'sk-YOy99Mw8fmEM585PriPd6VNkP5Vp5ybUeS4mdKA4Xe7jYZF9', maxInputTokens: 131072, maxOutputTokens: 65536 },
+  { id: 'qwen-max-ccswitch', name: 'Qwen Max (CC Switch)', url: 'https://api.zaixianshauti.top/v1', apiKey: 'sk-YOy99Mw8fmEM585PriPd6VNkP5Vp5ybUeS4mdKA4Xe7jYZF9', maxInputTokens: 131072, maxOutputTokens: 65536 },
+  { id: 'kimi-k2-ccswitch', name: 'Kimi K2 (CC Switch)', url: 'https://api.zaixianshauti.top/v1', apiKey: 'sk-YOy99Mw8fmEM585PriPd6VNkP5Vp5ybUeS4mdKA4Xe7jYZF9', maxInputTokens: 131072, maxOutputTokens: 65536 },
 ];
 
 async function apiRequest(path, options = {}) {

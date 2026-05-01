@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Button, Table, Modal, Form, Input, Select, Tag, Space, message, Popconfirm, Card, Typography, Alert } from 'antd'
-import { PlusOutlined, DeleteOutlined, EditOutlined, KeyOutlined, CloudDownloadOutlined, ImportOutlined } from '@ant-design/icons'
-import { listPlatforms, createPlatform, updatePlatform, deletePlatform, fetchRemoteModels, importRemoteModels } from '../api'
+import { Button, Table, Modal, Form, Input, Select, Tag, Space, message, Popconfirm, Card, Typography, Alert, Grid, Switch, Divider } from 'antd'
+import { PlusOutlined, DeleteOutlined, EditOutlined, KeyOutlined, CloudDownloadOutlined, ImportOutlined, DollarOutlined, GiftOutlined } from '@ant-design/icons'
+import { listPlatforms, createPlatform, updatePlatform, deletePlatform, fetchRemoteModels, importRemoteModels, listPlatformKeys, addPlatformKey, deletePlatformKey, doCheckinSingle } from '../api'
 import { useAppContext } from '../ThemeContext'
 import { t } from '../i18n'
 import { platformPresets, getPresetName } from '../presets'
@@ -26,8 +26,11 @@ export default function Platforms() {
   const [loading, setLoading] = useState(false)
   const [fetchingId, setFetchingId] = useState<string | null>(null)
   const [importingId, setImportingId] = useState<string | null>(null)
+  const [checkinId, setCheckinId] = useState<string | null>(null)
   const [platformModels, setPlatformModels] = useState<Record<string, PlatformModelState>>({})
   const { locale } = useAppContext()
+  const screens = Grid.useBreakpoint()
+  const isMobile = !screens.md
 
   const PLATFORM_TYPES = [
     { value: 'OpenAI', label: t(locale, 'openaiType') },
@@ -102,6 +105,10 @@ export default function Platforms() {
       base_url: record.base_url,
       api_key: record.api_key,
       organization: record.organization,
+      checkin_enabled: record.checkin_enabled || false,
+      auto_checkin: record.auto_checkin || false,
+      checkin_session: record.checkin_session || '',
+      checkin_user_id: record.checkin_user_id || '',
     })
     setModalOpen(true)
   }
@@ -163,8 +170,25 @@ export default function Platforms() {
       title: t(locale, 'status'),
       dataIndex: 'status',
       key: 'status',
-      width: 90,
-      render: (v: string) => <Tag color={v === 'Active' ? 'success' : 'default'} style={{ borderRadius: 4 }}>{v === 'Active' ? t(locale, 'active') : v}</Tag>,
+      width: 130,
+      render: (v: string, record: any) => {
+        const isAutoDisabled = record.auto_disabled
+        const consecutiveFails = record.consecutive_fails || 0
+        return (
+          <div>
+            <Tag color={isAutoDisabled ? 'error' : v === 'Active' ? 'success' : 'default'} style={{ borderRadius: 4 }}>
+              {isAutoDisabled ? t(locale, 'autoDisabled') : v === 'Active' ? t(locale, 'active') : v}
+            </Tag>
+            {consecutiveFails > 0 && (
+              <div style={{ marginTop: 2 }}>
+                <Tag color="warning" style={{ fontSize: 10, borderRadius: 4 }}>
+                  {t(locale, 'consecutiveFails')}: {consecutiveFails}
+                </Tag>
+              </div>
+            )}
+          </div>
+        )
+      },
     },
     {
       title: 'API Key',
@@ -174,25 +198,106 @@ export default function Platforms() {
       render: (v: string) => v ? <Text code style={{ fontSize: 12 }}>{v.slice(0, 8)}...</Text> : <Text type="secondary">-</Text>,
     },
     {
+      title: t(locale, 'balance'),
+      key: 'balance',
+      width: 120,
+      render: (_: any, record: any) => {
+        if (record.balance != null) {
+          const remaining = record.quota && record.used_quota ? (record.quota - record.used_quota) : record.balance
+          return (
+            <div>
+              <Tag color={remaining > 1000 ? 'success' : remaining > 100 ? 'warning' : 'error'} style={{ borderRadius: 4 }}>
+                ${remaining.toFixed(2)}
+              </Tag>
+              {record.last_balance_check && (
+                <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+                  {new Date(record.last_balance_check).toLocaleTimeString('zh-CN')}
+                </div>
+              )}
+            </div>
+          )
+        }
+        return <Text type="secondary">-</Text>
+      },
+    },
+    {
+      title: t(locale, 'checkin'),
+      key: 'checkin',
+      width: 100,
+      render: (_: any, record: any) => {
+        const hasCheckinConfig = record.checkin_enabled && record.checkin_session
+        return (
+          <div>
+            {hasCheckinConfig && (
+              <Button
+                size="small"
+                icon={<GiftOutlined />}
+                loading={checkinId === record.id}
+                onClick={async () => {
+                  setCheckinId(record.id)
+                  try {
+                    const result = await doCheckinSingle(record.id)
+                    if (result.success) {
+                      message.success(`${t(locale, 'checkinSuccess')}${result.quota_added ? ` +${result.quota_added}` : ''}`)
+                    } else {
+                      message.error(result.error_message || t(locale, 'checkinFailed'))
+                    }
+                    loadPlatforms()
+                  } catch (e: any) {
+                    message.error(e?.response?.data?.error?.message || t(locale, 'checkinFailed'))
+                  }
+                  setCheckinId(null)
+                }}
+                block={isMobile}
+              >
+                {t(locale, 'checkin')}
+              </Button>
+            )}
+            {!hasCheckinConfig && record.checkin_enabled && (
+              <Tag color="default" style={{ fontSize: 10 }}>需配置 Session</Tag>
+            )}
+            {!record.checkin_enabled && (
+              <Text type="secondary" style={{ fontSize: 10 }}>-</Text>
+            )}
+            {record.last_checkin && (
+              <div style={{ fontSize: 10, color: '#999', marginTop: 2 }}>
+                上次: {new Date(record.last_checkin).toLocaleDateString('zh-CN')}
+              </div>
+            )}
+          </div>
+        )
+      },
+    },
+    {
       title: t(locale, 'supportedModels'),
       key: 'supported_models',
       render: (_: any, record: any) => {
         const state = platformModels[record.id]
         const models = state?.models || []
         return (
-          <div style={{ minWidth: 380 }}>
+          <div style={{ minWidth: isMobile ? 260 : 380 }}>
             {state?.message && state?.success === false && (
               <Alert type="error" showIcon message={state.message} style={{ marginBottom: 8 }} />
             )}
             {state?.importMessage && (
               <Alert type="success" showIcon message={state.importMessage} style={{ marginBottom: 8 }} />
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: isMobile ? 'stretch' : 'center',
+                gap: 8,
+                marginBottom: 8,
+                flexWrap: 'wrap',
+                flexDirection: isMobile ? 'column' : 'row',
+              }}
+            >
               <Button
                 size="small"
                 icon={<CloudDownloadOutlined />}
                 loading={fetchingId === record.id}
                 onClick={() => handleFetchModels(record)}
+                block={isMobile}
               >
                 {t(locale, 'fetchFromPlatform')}
               </Button>
@@ -202,6 +307,7 @@ export default function Platforms() {
                 loading={importingId === record.id}
                 onClick={() => handleImportModels(record)}
                 disabled={models.length === 0}
+                block={isMobile}
               >
                 {t(locale, 'importModels')}
               </Button>
@@ -222,12 +328,12 @@ export default function Platforms() {
     {
       title: t(locale, 'action'),
       key: 'action',
-      width: 90,
+      width: isMobile ? 120 : 90,
       render: (_: any, record: any) => (
-        <Space>
-          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} />
+        <Space direction={isMobile ? 'vertical' : 'horizontal'} size={isMobile ? 4 : 8}>
+          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} block={isMobile} />
           <Popconfirm title={t(locale, 'deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
-            <Button type="text" danger size="small" icon={<DeleteOutlined />} />
+            <Button type="text" danger size="small" icon={<DeleteOutlined />} block={isMobile} />
           </Popconfirm>
         </Space>
       ),
@@ -236,9 +342,18 @@ export default function Platforms() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: isMobile ? 'stretch' : 'center',
+          marginBottom: 16,
+          gap: 12,
+          flexDirection: isMobile ? 'column' : 'row',
+        }}
+      >
         <Title level={5} style={{ margin: 0 }}>{t(locale, 'platforms')}</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t(locale, 'addPlatform')}</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} block={isMobile}>{t(locale, 'addPlatform')}</Button>
       </div>
 
       <Card styles={{ body: { padding: 0 } }}>
@@ -280,6 +395,23 @@ export default function Platforms() {
           <Form.Item name="organization" label={t(locale, 'organization')}>
             <Input placeholder="org-xxx (optional)" />
           </Form.Item>
+          {editItem && (
+            <>
+              <Divider orientation="left" style={{ fontSize: 13 }}>签到与余额</Divider>
+              <Form.Item name="checkin_enabled" label={t(locale, 'checkinEnabled')} valuePropName="checked">
+                <Switch />
+              </Form.Item>
+              <Form.Item name="auto_checkin" label={t(locale, 'autoCheckin')} valuePropName="checked">
+                <Switch />
+              </Form.Item>
+              <Form.Item name="checkin_session" label="Session">
+                <Input.Password placeholder="浏览器 Cookie 中的 session 值" />
+              </Form.Item>
+              <Form.Item name="checkin_user_id" label="User ID">
+                <Input placeholder="NewAPI 用户 ID" />
+              </Form.Item>
+            </>
+          )}
         </Form>
       </Modal>
     </div>

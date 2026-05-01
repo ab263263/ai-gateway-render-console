@@ -108,6 +108,19 @@ export const listApiKeys = () => api.get('/api-keys').then(r => r.data)
 export const createApiKey = (data: any) => api.post('/api-keys', data).then(r => r.data)
 export const deleteApiKey = (id: string) => api.delete(`/api-keys/${id}`)
 
+// Platform Keys (multi-key support)
+export const listPlatformKeys = (platformId: string) => api.get(`/platforms/${platformId}/keys`).then(r => r.data)
+export const addPlatformKey = (platformId: string, data: { api_key: string; weight?: number }) => api.post(`/platforms/${platformId}/keys`, data).then(r => r.data)
+export const deletePlatformKey = (keyId: string) => api.delete(`/platform-keys/${keyId}`)
+
+// Model Aliases
+export const listModelAliases = () => api.get('/model-aliases').then(r => r.data)
+export const createModelAlias = (data: { alias: string; actual_model_id: string }) => api.post('/model-aliases', data).then(r => r.data)
+export const deleteModelAlias = (id: string) => api.delete(`/model-aliases/${id}`)
+
+// Request Logs
+export const listLogs = (params?: { page?: number; page_size?: number; platform_id?: string; model_id?: string; status_code?: number; start_time?: string; end_time?: string }) => api.get('/logs', { params }).then(r => r.data)
+
 // Stats
 export const getOverview = () => api.get('/stats/overview').then(r => r.data)
 export const getProxyStats = (proxyId: string) => api.get(`/stats/proxy/${proxyId}`).then(r => r.data)
@@ -116,3 +129,10 @@ export const getPlatformStats = (platformId: string) => api.get(`/stats/platform
 // Settings
 export const getSettings = () => api.get('/settings').then(r => r.data)
 export const updateSettings = (data: any) => api.put('/settings', data).then(r => r.data)
+
+// Checkin & Balance
+export const doCheckin = () => api.post('/checkin').then(r => r.data)
+export const doCheckinSingle = (platformId: string) => api.post(`/checkin/${platformId}`).then(r => r.data)
+export const listBalances = () => api.get('/balances').then(r => r.data)
+export const refreshBalances = () => api.post('/balances/refresh').then(r => r.data)
+export const listCheckinLogs = (params?: { platform_id?: string; limit?: number }) => api.get('/checkin-logs', { params }).then(r => r.data)

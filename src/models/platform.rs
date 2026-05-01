@@ -48,6 +48,33 @@ pub struct Platform {
     pub rate_limit: Option<RateLimit>,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default)]
+    pub fail_count: i64,
+    #[serde(default)]
+    pub consecutive_fails: i64,
+    #[serde(default)]
+    pub auto_disabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_health_check: Option<String>,
+    // Checkin & Balance fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkin_session: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkin_user_id: Option<String>,
+    #[serde(default)]
+    pub auto_checkin: bool,
+    #[serde(default)]
+    pub checkin_enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub balance: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quota: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub used_quota: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_checkin: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_balance_check: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,6 +105,11 @@ pub struct UpdatePlatformRequest {
     pub organization: Option<String>,
     pub custom_headers: Option<serde_json::Value>,
     pub status: Option<PlatformStatus>,
+    // Checkin & Balance
+    pub checkin_session: Option<String>,
+    pub checkin_user_id: Option<String>,
+    pub auto_checkin: Option<bool>,
+    pub checkin_enabled: Option<bool>,
 }
 
 fn default_platform_type() -> PlatformType {
