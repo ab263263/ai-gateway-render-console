@@ -203,11 +203,12 @@ async fn handle_request(
         // Try multi-key first, fall back to platform.api_key
         let db_for_key = state.db.clone();
         let pid_for_key = backend.platform_id.clone();
+        let fallback_api_key = platform.api_key.clone();
         let api_key_for_request = web::block(move || {
             // Try to select from platform_keys
             match crate::db::platform_key::select_key(&db_for_key, &pid_for_key) {
                 Ok(Some(key)) => Ok::<String, crate::error::AppError>(key),
-                _ => Ok::<String, crate::error::AppError>(platform.api_key.clone()),
+                _ => Ok::<String, crate::error::AppError>(fallback_api_key),
             }
         }).await.map_err(|e| AppError::Internal(e.to_string()))??;
 
@@ -304,7 +305,8 @@ async fn handle_request(
                     let pid = proxy.id.clone();
                     let rid = route.id.clone();
                     let bid = backend.id.clone();
-                    web::block(move || record_stat(&db, &pid, &rid, &bid, status_code, latency_ms, None, None, Some(et.clone()))).await.ok();
+                    let et_stat = et.clone();
+                    web::block(move || record_stat(&db, &pid, &rid, &bid, status_code, latency_ms, None, None, Some(et_stat))).await.ok();
 
                     // Record request log
                     let db_log = state.db.clone();

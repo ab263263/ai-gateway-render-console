@@ -18,12 +18,17 @@ pub async fn do_checkin_now(
         }
         let db = state.db.clone();
         let client = state.http_client.clone();
+        let config_id = config.id.clone();
+        let config_name = config.name.clone();
+        let base_url = config.base_url.clone();
+        let checkin_session = config.checkin_session.clone();
+        let checkin_user_id = config.checkin_user_id.clone();
 
         let mut log = crate::checkin::do_checkin(&client, &config).await.unwrap_or_else(|e| {
             crate::db::checkin::CheckinLog {
                 id: 0,
-                platform_id: config.id.clone(),
-                platform_name: config.name.clone(),
+                platform_id: config_id.clone(),
+                platform_name: config_name.clone(),
                 result: None,
                 quota_added: None,
                 balance_after: None,
@@ -34,11 +39,11 @@ pub async fn do_checkin_now(
         });
 
         // Try to refresh balance after checkin
-        if let (Some(session), Some(uid)) = (&config.checkin_session, &config.checkin_user_id) {
-            if let Ok((remaining, total, used)) = crate::checkin::query_balance(&client, &config.base_url, session, uid).await {
+        if let (Some(session), Some(uid)) = (&checkin_session, &checkin_user_id) {
+            if let Ok((remaining, total, used)) = crate::checkin::query_balance(&client, &base_url, session, uid).await {
                 log.balance_after = Some(remaining);
                 let db2 = state.db.clone();
-                let pid = config.id.clone();
+                let pid = config_id.clone();
                 web::block(move || crate::db::checkin::update_balance(&db2, &pid, remaining, total, used)).await.ok();
             }
         }
@@ -70,15 +75,20 @@ pub async fn checkin_single(
         .ok_or_else(|| AppError::NotFound("Platform not found or checkin not enabled".to_string()))?;
 
     let client = state.http_client.clone();
+    let config_id = config.id.clone();
+    let base_url = config.base_url.clone();
+    let checkin_session = config.checkin_session.clone();
+    let checkin_user_id = config.checkin_user_id.clone();
+
     let mut log = crate::checkin::do_checkin(&client, &config).await
         .map_err(|e| AppError::Internal(e))?;
 
     // Try to refresh balance
-    if let (Some(session), Some(uid)) = (&config.checkin_session, &config.checkin_user_id) {
-        if let Ok((remaining, total, used)) = crate::checkin::query_balance(&client, &config.base_url, session, uid).await {
+    if let (Some(session), Some(uid)) = (&checkin_session, &checkin_user_id) {
+        if let Ok((remaining, total, used)) = crate::checkin::query_balance(&client, &base_url, session, uid).await {
             log.balance_after = Some(remaining);
             let db2 = state.db.clone();
-            let pid = config.id.clone();
+            let pid = config_id.clone();
             web::block(move || crate::db::checkin::update_balance(&db2, &pid, remaining, total, used)).await.ok();
         }
     }
@@ -114,14 +124,17 @@ pub async fn refresh_balances(
             (Some(s), Some(u)) => (s.clone(), u.clone()),
             _ => continue,
         };
+        let base_url = config.base_url.clone();
+        let config_id = config.id.clone();
+        let config_name = config.name.clone();
 
-        match crate::checkin::query_balance(&state.http_client, &config.base_url, &session, &uid).await {
+        match crate::checkin::query_balance(&state.http_client, &base_url, &session, &uid).await {
             Ok((remaining, total, used)) => {
                 let db2 = state.db.clone();
-                let pid = config.id.clone();
+                let pid = config_id.clone();
                 web::block(move || crate::db::checkin::update_balance(&db2, &pid, remaining, total, used)).await.ok();
                 results.push(serde_json::json!({
-                    "platform": config.name,
+                    "platform": config_name,
                     "remaining": remaining,
                     "total": total,
                     "used": used,
@@ -129,7 +142,7 @@ pub async fn refresh_balances(
             }
             Err(e) => {
                 results.push(serde_json::json!({
-                    "platform": config.name,
+                    "platform": config_name,
                     "error": e,
                 }));
             }
