@@ -17,7 +17,7 @@ pub fn list(pool: &DbPool) -> AppResult<Vec<Model>> {
             context_window: row.get(5)?,
             input_price: row.get(6)?,
             output_price: row.get(7)?,
-            capabilities: serde_json::from_str::<serde_json::Value>(&row.get::<_, String>(8)?).unwrap_or_default(),
+            capabilities: serde_json::from_str::<Vec<crate::models::model::Capability>>(&row.get::<_, String>(8)?).unwrap_or_default(),
             status: serde_json::from_str::<ModelStatus>(&row.get::<_, String>(9)?).unwrap_or(ModelStatus::Active),
         })
     })?;
@@ -39,7 +39,7 @@ pub fn list_by_platform(pool: &DbPool, platform_id: &str) -> AppResult<Vec<Model
             context_window: row.get(5)?,
             input_price: row.get(6)?,
             output_price: row.get(7)?,
-            capabilities: serde_json::from_str::<serde_json::Value>(&row.get::<_, String>(8)?).unwrap_or_default(),
+            capabilities: serde_json::from_str::<Vec<crate::models::model::Capability>>(&row.get::<_, String>(8)?).unwrap_or_default(),
             status: serde_json::from_str::<ModelStatus>(&row.get::<_, String>(9)?).unwrap_or(ModelStatus::Active),
         })
     })?;

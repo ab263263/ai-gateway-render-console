@@ -2,7 +2,6 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use futures::StreamExt;
 use std::sync::Arc;
 use std::time::Instant;
-use chrono::Utc;
 
 use crate::db::DbPool;
 use crate::error::AppError;
@@ -207,8 +206,8 @@ async fn handle_request(
         let api_key_for_request = web::block(move || {
             // Try to select from platform_keys
             match crate::db::platform_key::select_key(&db_for_key, &pid_for_key) {
-                Ok(Some(key)) => Ok(key),
-                _ => Ok(platform.api_key.clone()),
+                Ok(Some(key)) => Ok::<String, crate::error::AppError>(key),
+                _ => Ok::<String, crate::error::AppError>(platform.api_key.clone()),
             }
         }).await.map_err(|e| AppError::Internal(e.to_string()))??;
 
@@ -399,7 +398,7 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
             Ok(bytes) => {
                 // Filter out invalid UTF-8 sequences and empty chunks
                 if bytes.is_empty() {
-                    return std::future::ready(None);
+                    return std::future::ready(None::<Result<bytes::Bytes, reqwest::Error>>);
                 }
                 // Validate UTF-8, skip chunks with invalid bytes
                 match std::str::from_utf8(&bytes) {
@@ -407,7 +406,7 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
                         // Skip chunks that are only whitespace
                         let trimmed = text.trim();
                         if trimmed.is_empty() {
-                            return std::future::ready(None);
+                            return std::future::ready(None::<Result<bytes::Bytes, reqwest::Error>>);
                         }
                         // Validate SSE: each line should be "data: ..." or "event: ..." or empty line
                         // If it contains invalid JSON in data lines, we still pass it through
@@ -426,7 +425,7 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
                     Err(_) => {
                         // Invalid UTF-8 - skip this chunk
                         tracing::warn!("SSE: filtering invalid UTF-8 chunk ({} bytes)", bytes.len());
-                        std::future::ready(None)
+                        std::future::ready(None::<Result<bytes::Bytes, reqwest::Error>>)
                     }
                 }
             }
