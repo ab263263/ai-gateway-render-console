@@ -4,7 +4,7 @@ import {
   DashboardOutlined, CloudServerOutlined, ApiOutlined,
   SunOutlined, MoonOutlined, DesktopOutlined, GlobalOutlined,
   BookOutlined, SettingOutlined, GithubOutlined, KeyOutlined, RobotOutlined,
-  FileTextOutlined,
+  FileTextOutlined, GiftOutlined,
 } from '@ant-design/icons'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
@@ -15,6 +15,7 @@ import Settings from './pages/Settings'
 import Models from './pages/Models'
 import ChatTest from './pages/ChatTest'
 import Logs from './pages/Logs'
+import Checkin from './pages/Checkin'
 import { useAppContext } from './ThemeContext'
 import { t, type Locale, type ThemeMode } from './i18n'
 
@@ -28,6 +29,7 @@ const TAB_ITEMS = [
   { key: '/proxies', icon: <ApiOutlined style={{ fontSize: 18 }} />, color: '#eb2f96', label: 'proxies' },
   { key: '/chat-test', icon: <ApiOutlined style={{ fontSize: 18 }} />, color: '#fa8c16', label: 'chatTest' },
   { key: '/api-keys', icon: <KeyOutlined style={{ fontSize: 18 }} />, color: '#faad14', label: 'apiKeys' },
+  { key: '/checkin', icon: <GiftOutlined style={{ fontSize: 18 }} />, color: '#52c41a', label: 'checkin' },
   { key: '/logs', icon: <FileTextOutlined style={{ fontSize: 18 }} />, color: '#52c41a', label: 'requestLogs' },
   { key: '/settings', icon: <SettingOutlined style={{ fontSize: 18 }} />, color: '#8c8c8c', label: 'settings' },
 ]
@@ -165,6 +167,7 @@ export default function App() {
           <Route path="/proxies" element={<Proxies />} />
           <Route path="/chat-test" element={<ChatTest />} />
           <Route path="/api-keys" element={<ApiKeys />} />
+          <Route path="/checkin" element={<Checkin />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
