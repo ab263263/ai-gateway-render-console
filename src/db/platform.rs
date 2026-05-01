@@ -2,7 +2,7 @@ use crate::error::AppResult;
 use crate::models::platform::*;
 use crate::db::DbPool;
 
-const SELECT_COLUMNS: &str = "id, name, type, base_url, api_key, organization, custom_headers, status, rate_limit, created_at, updated_at, COALESCE(fail_count,0), COALESCE(consecutive_fails,0), COALESCE(auto_disabled,0), last_health_check, checkin_session, checkin_user_id, COALESCE(auto_checkin,0), COALESCE(checkin_enabled,0), balance, quota, used_quota, last_checkin, last_balance_check";
+const SELECT_COLUMNS: &str = "id, name, type, base_url, api_key, organization, custom_headers, status, rate_limit, created_at, updated_at, COALESCE(fail_count,0), COALESCE(consecutive_fails,0), COALESCE(auto_disabled,0), last_health_check, checkin_session, checkin_user_id, COALESCE(auto_checkin,0), COALESCE(checkin_enabled,0), COALESCE(balance,0.0), COALESCE(quota,0.0), COALESCE(used_quota,0.0), last_checkin, last_balance_check";
 
 fn row_to_platform(row: &rusqlite::Row) -> rusqlite::Result<Platform> {
     let rate_limit_str: Option<String> = row.get(8)?;
@@ -29,9 +29,9 @@ fn row_to_platform(row: &rusqlite::Row) -> rusqlite::Result<Platform> {
         checkin_user_id: row.get(16)?,
         auto_checkin: auto_checkin_int != 0,
         checkin_enabled: checkin_enabled_int != 0,
-        balance: row.get::<_, Option<f64>>(20)?,
-        quota: row.get::<_, Option<f64>>(21)?,
-        used_quota: row.get::<_, Option<f64>>(22)?,
+        balance: Some(row.get::<_, f64>(20)?),
+        quota: Some(row.get::<_, f64>(21)?),
+        used_quota: Some(row.get::<_, f64>(22)?),
         last_checkin: row.get(23)?,
         last_balance_check: row.get(24)?,
     })
