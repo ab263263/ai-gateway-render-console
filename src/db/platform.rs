@@ -7,8 +7,8 @@ const SELECT_COLUMNS: &str = "id, name, type, base_url, api_key, organization, c
 fn row_to_platform(row: &rusqlite::Row) -> rusqlite::Result<Platform> {
     let rate_limit_str: Option<String> = row.get(8)?;
     let auto_disabled_int: i32 = row.get(13)?;
-    let auto_checkin_int: i32 = row.get(18)?;
-    let checkin_enabled_int: i32 = row.get(19)?;
+    let auto_checkin_int: i32 = row.get(17)?;
+    let checkin_enabled_int: i32 = row.get(18)?;
     Ok(Platform {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -29,11 +29,11 @@ fn row_to_platform(row: &rusqlite::Row) -> rusqlite::Result<Platform> {
         checkin_user_id: row.get(16)?,
         auto_checkin: auto_checkin_int != 0,
         checkin_enabled: checkin_enabled_int != 0,
-        balance: Some(row.get::<_, f64>(20)?),
-        quota: Some(row.get::<_, f64>(21)?),
-        used_quota: Some(row.get::<_, f64>(22)?),
-        last_checkin: row.get(23)?,
-        last_balance_check: row.get(24)?,
+        balance: Some(row.get::<_, f64>(19)?),
+        quota: Some(row.get::<_, f64>(20)?),
+        used_quota: Some(row.get::<_, f64>(21)?),
+        last_checkin: row.get(22)?,
+        last_balance_check: row.get(23)?,
     })
 }
 
