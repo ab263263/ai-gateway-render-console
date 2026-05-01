@@ -29,9 +29,9 @@ fn row_to_platform(row: &rusqlite::Row) -> rusqlite::Result<Platform> {
         checkin_user_id: row.get(16)?,
         auto_checkin: auto_checkin_int != 0,
         checkin_enabled: checkin_enabled_int != 0,
-        balance: row.get(20)?,
-        quota: row.get(21)?,
-        used_quota: row.get(22)?,
+        balance: row.get::<_, Option<f64>>(20)?,
+        quota: row.get::<_, Option<f64>>(21)?,
+        used_quota: row.get::<_, Option<f64>>(22)?,
         last_checkin: row.get(23)?,
         last_balance_check: row.get(24)?,
     })
