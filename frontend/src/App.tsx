@@ -74,7 +74,7 @@ export default function App() {
           <img src="./logo.png" alt="" style={{ width: 26, height: 26, flexShrink: 0 }} />
           <div style={{ overflow: 'hidden' }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: token.colorPrimary, lineHeight: '18px', whiteSpace: 'nowrap' }}>AI Gateway</div>
-            <div style={{ fontSize: 10, color: token.colorTextSecondary, lineHeight: '13px', whiteSpace: 'nowrap' }}>{t(locale, 'appSubtitle')} v1.2.0</div>
+            <div style={{ fontSize: 10, color: token.colorTextSecondary, lineHeight: '13px', whiteSpace: 'nowrap' }}>{t(locale, 'appSubtitle')} v1.5.0</div>
           </div>
         </div>
 
@@ -86,6 +86,8 @@ export default function App() {
           borderRadius: 10,
           padding: 3,
           position: 'relative',
+          overflowX: 'auto',
+          maxWidth: 'calc(100vw - 460px)',
         }}>
           <div style={{
             position: 'absolute',
@@ -102,25 +104,31 @@ export default function App() {
           {TAB_ITEMS.map(item => {
             const isActive = location.pathname === item.key
             return (
-              <div
-                key={item.key}
-                onClick={() => navigate(item.key)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  width: 42,
-                  height: 34,
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  transition: 'color 0.2s',
-                  position: 'relative',
-                  zIndex: 1,
-                  color: isActive ? item.color : (isDark ? `${item.color}66` : `${item.color}88`),
-                }}
-              >
-                {item.icon}
-              </div>
+              <Tooltip key={item.key} title={t(locale, item.label as any)} placement="bottom">
+                <div
+                  onClick={() => navigate(item.key)}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: 42,
+                    height: 38,
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    transition: 'color 0.2s',
+                    position: 'relative',
+                    zIndex: 1,
+                    padding: '2px 4px',
+                    color: isActive ? item.color : (isDark ? `${item.color}66` : `${item.color}88`),
+                  }}
+                >
+                  {item.icon}
+                  <span style={{ fontSize: 9, lineHeight: '11px', marginTop: 1, whiteSpace: 'nowrap', fontWeight: isActive ? 600 : 400 }}>
+                    {t(locale, item.label as any)}
+                  </span>
+                </div>
+              </Tooltip>
             )
           })}
         </div>

@@ -115,3 +115,43 @@ fn save_config(cfg: &AppConfig) -> Result<(), String> {
     let config_path = crate::config::get_app_dir().join("config.toml");
     std::fs::write(&config_path, toml_str).map_err(|e| format!("Failed to write config: {}", e))
 }
+
+/// GET /api/backup — Export all config data as JSON for backup
+pub async fn export_backup(db: web::Data<crate::db::DbPool>) -> HttpResponse {
+    let db = db.into_inner();
+    let result = web::block(move || {
+        let platforms = crate::db::platform::list(&db).unwrap_or_default();
+        let models = crate::db::model::list(&db).unwrap_or_default();
+        let proxies = crate::db::proxy::list(&db).unwrap_or_default();
+        let api_keys = crate::db::api_key::list(&db).unwrap_or_default();
+
+        // For each proxy, get its routes with backends
+        let mut proxy_routes: Vec<serde_json::Value> = Vec::new();
+        for p in &proxies {
+            if let Ok(Some(route)) = crate::db::route::get_by_proxy(&db, &p.id) {
+                let backends = crate::db::route::list_backends_by_route(&db, &route.id).unwrap_or_default();
+                proxy_routes.push(serde_json::json!({
+                    "proxy_id": p.id,
+                    "proxy_name": p.name,
+                    "route": route,
+                    "backends": backends,
+                }));
+            }
+        }
+
+        serde_json::json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "exported_at": chrono::Utc::now().to_rfc3339(),
+            "platforms": platforms,
+            "models": models,
+            "proxies": proxies,
+            "proxy_routes": proxy_routes,
+            "api_keys": api_keys,
+        })
+    }).await;
+
+    match result {
+        Ok(data) => HttpResponse::Ok().json(data),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({"error": e.to_string()})),
+    }
+}

@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Card, Col, Row, Statistic, Tag, Typography, Button, Tooltip } from 'antd'
+import { Card, Col, Row, Statistic, Tag, Typography, Button, Tooltip, Badge, Progress } from 'antd'
 import {
   CloudServerOutlined, ApiOutlined,
   CheckCircleOutlined, SafetyCertificateOutlined,
   ClockCircleOutlined, ReloadOutlined, DollarOutlined, ArrowUpOutlined, ArrowDownOutlined,
-  ThunderboltOutlined,
+  ThunderboltOutlined, WalletOutlined, WarningOutlined, CloseCircleOutlined,
 } from '@ant-design/icons'
-import { getOverview, listProxies, listPlatforms, getProxyStats, getPlatformStats } from '../api'
+import { getOverview, listProxies, listPlatforms, getProxyStats, getPlatformStats, listBalances } from '../api'
 import { useAppContext } from '../ThemeContext'
 import { t } from '../i18n'
 import { getPresetName, platformPresets } from '../presets'
@@ -44,18 +44,21 @@ export default function Dashboard() {
   const [stats, setStats] = useState<any>({})
   const [proxies, setProxies] = useState<ProxyWithStats[]>([])
   const [platforms, setPlatforms] = useState<PlatformWithStats[]>([])
+  const [balances, setBalances] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const { locale, isDark } = useAppContext()
 
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [overview, proxyList, platformList] = await Promise.all([
+      const [overview, proxyList, platformList, balanceList] = await Promise.all([
         getOverview().catch(() => ({})),
         listProxies().catch(() => []),
         listPlatforms().catch(() => []),
+        listBalances().catch(() => []),
       ])
       setStats(overview)
+      setBalances(balanceList)
 
       // Fetch per-proxy stats
       const proxiesWithStats: ProxyWithStats[] = await Promise.all(
@@ -206,6 +209,38 @@ export default function Dashboard() {
         </Col>
       </Row>
 
+      {/* Balance Summary Row */}
+      {balances.length > 0 && (
+        <Card bordered={false} style={{ marginTop: 16, borderRadius: 12 }}
+          title={<Title level={5} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <WalletOutlined style={{ color: '#faad14' }} /> 余额概览
+          </Title>}
+        >
+          <Row gutter={[16, 16]}>
+            {balances.map((b: any) => (
+              <Col xs={24} sm={12} lg={8} key={b.platform_id || b.platform_name}>
+                <Card size="small" bordered={false} style={{ borderRadius: 8, background: isDark ? '#1a1a1a' : '#fafafa' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text strong style={{ fontSize: 13 }}>{b.platform_name}</Text>
+                    <Text style={{ fontSize: 18, fontWeight: 700, color: (b.balance ?? 0) > 0 ? '#52c41a' : '#ff4d4f' }}>
+                      ${b.balance !== null && b.balance !== undefined ? Number(b.balance).toFixed(2) : '—'}
+                    </Text>
+                  </div>
+                  {b.total !== null && b.total !== undefined && b.total > 0 && (
+                    <Progress
+                      percent={Math.round(((b.used ?? 0) / b.total) * 100)}
+                      size="small"
+                      status={(b.used ?? 0) / b.total > 0.9 ? 'exception' : 'active'}
+                      format={() => `${Number(b.used ?? 0).toFixed(2)} / ${Number(b.total).toFixed(2)}`}
+                    />
+                  )}
+                </Card>
+              </Col>
+            ))}
+          </Row>
+        </Card>
+      )}
+
       {/* Virtual Model Status */}
       <Card
         bordered={false}
@@ -276,16 +311,30 @@ export default function Dashboard() {
           </div>
         ) : (
           <Row gutter={[16, 16]}>
-            {platforms.map((p) => (
+            {platforms.map((p: any) => {
+              const healthColor = p.auto_disabled ? '#ff4d4f' : (p.consecutive_fails > 0 ? '#faad14' : '#52c41a')
+              const healthIcon = p.auto_disabled ? <CloseCircleOutlined /> : (p.consecutive_fails > 0 ? <WarningOutlined /> : <CheckCircleOutlined />)
+              return (
               <Col xs={24} sm={12} lg={8} key={p.id}>
                 <Card size="small" bordered={false} hoverable style={{ borderRadius: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text strong>{getPlatformDisplayName(p.name)}</Text>
-                    <Tag>{p.type}</Tag>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Badge color={healthColor} />
+                      <Text strong>{getPlatformDisplayName(p.name)}</Text>
+                    </div>
+                    <Tag icon={healthIcon} color={p.auto_disabled ? 'error' : (p.consecutive_fails > 0 ? 'warning' : 'success')}>
+                      {p.auto_disabled ? 'Disabled' : (p.consecutive_fails > 0 ? `${p.consecutive_fails} fail` : 'Active')}
+                    </Tag>
                   </div>
                   <div style={{ fontSize: 12, color: '#999', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {p.base_url}
                   </div>
+                  {/* Balance info if available */}
+                  {p.balance !== null && p.balance !== undefined && Number(p.balance) > 0 && (
+                    <div style={{ marginTop: 4 }}>
+                      <Text style={{ fontSize: 12, color: '#52c41a' }}>${Number(p.balance).toFixed(2)}</Text>
+                    </div>
+                  )}
                   {/* Per-platform stats */}
                   {p.stats && p.stats.total_requests > 0 ? (
                     <div style={{
@@ -308,7 +357,7 @@ export default function Dashboard() {
                   )}
                 </Card>
               </Col>
-            ))}
+            )})}
           </Row>
         )}
       </Card>

@@ -276,6 +276,46 @@
 - [ ] 余额显示是否正确
 - [ ] Logs 页面线上是否可访问
 
+---
+
+## 2026-05-03
+
+### 24. v1.5.0 优化迭代
+
+**24.1 版本号统一 (F1)**
+- Cargo.toml: 1.4.0 → 1.5.0
+- 前端 App.tsx: v1.2.0 → v1.5.0
+
+**24.2 前端导航优化 (F3)**
+- Tab 栏添加文字标签（图标+文字纵向排列）
+- 添加 Tooltip 悬浮提示
+- 响应式 overflow 处理
+
+**24.3 Dashboard 增强 (F4)**
+- 新增余额概览卡片（调用 `/api/balances`）
+- 平台卡片添加健康状态指示灯（Badge + Tag）
+  - 绿色 = Active / 0 fails
+  - 黄色 = 有 consecutive_fails
+  - 红色 = auto_disabled
+- 平台卡片显示余额信息
+
+**24.4 一键备份 (F6)**
+- 后端新增 `GET /api/backup` 导出全部配置为 JSON
+- 包含: platforms + models + proxies + proxy_routes + api_keys
+- Settings 页添加"导出备份"按钮，下载 JSON 文件
+- 前端 api.ts 新增 `exportBackup()` 方法
+
+**24.5 管理后台认证确认**
+- 确认 main.rs 已有 HTTP Basic Auth 中间件
+- 当 ADMIN_USERNAME 和 ADMIN_PASSWORD 环境变量非空时生效
+- /v1/* 和 /health 路径不受认证影响
+
+**前端构建验证**
+- `npm run build` 通过，新 hash: `index-EEYzxJER.js`
+- static/index.html 自动更新
+
+**待推送到 GitHub + 触发 Render 部署**
+
 
 
 

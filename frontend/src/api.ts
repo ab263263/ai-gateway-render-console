@@ -130,6 +130,9 @@ export const getPlatformStats = (platformId: string) => api.get(`/stats/platform
 export const getSettings = () => api.get('/settings').then(r => r.data)
 export const updateSettings = (data: any) => api.put('/settings', data).then(r => r.data)
 
+// Backup
+export const exportBackup = () => api.get('/backup').then(r => r.data)
+
 // Checkin & Balance
 export const doCheckin = () => api.post('/checkin').then(r => r.data)
 export const doCheckinSingle = (platformId: string) => api.post(`/checkin/${platformId}`).then(r => r.data)

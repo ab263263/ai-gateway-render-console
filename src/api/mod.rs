@@ -76,5 +76,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 // 设置
                 .route("/settings", web::get().to(settings::get_config))
                 .route("/settings", web::put().to(settings::update_config))
+                // 备份
+                .route("/backup", web::get().to(settings::export_backup))
         );
 }

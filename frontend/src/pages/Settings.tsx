@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Card, Form, InputNumber, Input, Select, Button, message, Typography, Divider, Switch } from 'antd'
-import { SaveOutlined, DesktopOutlined, ControlOutlined, ThunderboltOutlined, SyncOutlined } from '@ant-design/icons'
+import { SaveOutlined, DesktopOutlined, ControlOutlined, ThunderboltOutlined, SyncOutlined, DownloadOutlined } from '@ant-design/icons'
 import { useAppContext } from '../ThemeContext'
 import { t } from '../i18n'
-import { getSettings, updateSettings } from '../api'
+import { getSettings, updateSettings, exportBackup } from '../api'
 
 const { Title, Text } = Typography
 
@@ -137,7 +137,28 @@ export default function Settings() {
         </Card>
 
         <Divider style={{ margin: '8px 0 16px' }} />
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={async () => {
+              try {
+                const data = await exportBackup()
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `ai-gateway-backup-${new Date().toISOString().slice(0, 10)}.json`
+                a.click()
+                URL.revokeObjectURL(url)
+                message.success('备份已下载')
+              } catch {
+                message.error('备份导出失败')
+              }
+            }}
+            style={{ borderRadius: 8 }}
+          >
+            导出备份
+          </Button>
           <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} style={{ borderRadius: 8, minWidth: 120 }}>
             {t(locale, 'save')}
           </Button>
