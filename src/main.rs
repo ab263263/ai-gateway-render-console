@@ -33,6 +33,21 @@ fn is_admin_authorized(auth_header: Option<&header::HeaderValue>, username: &str
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    // Install panic hook to log panics before crashing
+    std::panic::set_hook(Box::new(|panic_info| {
+        let msg = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic".to_string()
+        };
+        let location = panic_info.location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+        eprintln!("PANIC: {} at {}", msg, location);
+    }));
+
     let app_config = ai_gateway::config::AppConfig::load_or_default();
 
     tracing_subscriber::fmt()
@@ -40,7 +55,7 @@ async fn main() -> std::io::Result<()> {
             .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&app_config.server.log_level)))
         .init();
 
-    tracing::info!("AI Gateway starting...");
+    tracing::info!("AI Gateway v{} starting...", env!("CARGO_PKG_VERSION"));
     tracing::info!("Admin UI + API: http://{}:{}", app_config.server.host, app_config.server.admin_port);
     tracing::info!("App directory: {:?}", ai_gateway::config::get_app_dir());
 
@@ -70,6 +85,15 @@ async fn main() -> std::io::Result<()> {
     let admin_port = app_config.server.admin_port;
     let admin_username = app_config.security.admin_username.clone();
     let admin_password = app_config.security.admin_password.clone();
+
+    tracing::info!("Static dir: {:?}", static_dir);
+    tracing::info!("Static dir exists: {}", static_dir.exists());
+
+    // Ensure static directory exists
+    if !static_dir.exists() {
+        tracing::warn!("Static directory {:?} does not exist, creating empty directory", static_dir);
+        std::fs::create_dir_all(&static_dir).expect("Failed to create static directory");
+    }
 
     HttpServer::new(move || {
         let cors = Cors::permissive();

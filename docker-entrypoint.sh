@@ -1,8 +1,19 @@
 #!/bin/sh
 set -e
 
+echo "=== AI Gateway Entrypoint Starting ==="
+echo "HOST=${HOST} PORT=${PORT} SQL_DSN=${SQL_DSN}"
+echo "Working directory: $(pwd)"
+echo "Binary exists: $(test -f /app/ai-gateway && echo yes || echo no)"
+echo "Binary size: $(wc -c < /app/ai-gateway 2>/dev/null || echo N/A)"
+echo "Static dir exists: $(test -d /app/static && echo yes || echo no)"
+echo "Static dir contents: $(ls -la /app/static/ 2>/dev/null || echo N/A)"
+echo "Config exists: $(test -f /app/config.toml && echo yes || echo no)"
+echo "Data dir exists: $(test -d /data && echo yes || echo no)"
+
 /app/ai-gateway &
 APP_PID=$!
+echo "AI Gateway started with PID ${APP_PID}"
 
 cleanup() {
   kill $APP_PID 2>/dev/null || true
@@ -20,11 +31,20 @@ for i in $(seq 1 60); do
     echo "AI Gateway health check passed on attempt ${i} (${APP_BASE_URL}/health)"
     break
   fi
+  # Check if the app process is still alive
+  if ! kill -0 $APP_PID 2>/dev/null; then
+    echo "=== AI Gateway process died unexpectedly ==="
+    exit 1
+  fi
   sleep 2
 done
 
 if [ "$HEALTH_OK" -ne 1 ]; then
-  echo "AI Gateway health check did not pass within startup window; seed may fail if executed"
+  echo "AI Gateway health check did not pass within startup window"
+  if ! kill -0 $APP_PID 2>/dev/null; then
+    echo "=== AI Gateway process is dead ==="
+    exit 1
+  fi
 fi
 
 if [ -n "$AI_GATEWAY_SEED_ON_BOOT" ] && [ "$AI_GATEWAY_SEED_ON_BOOT" = "1" ]; then
