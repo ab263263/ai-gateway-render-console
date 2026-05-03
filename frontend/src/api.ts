@@ -139,3 +139,7 @@ export const doCheckinSingle = (platformId: string) => api.post(`/checkin/${plat
 export const listBalances = () => api.get('/balances').then(r => r.data)
 export const refreshBalances = () => api.post('/balances/refresh').then(r => r.data)
 export const listCheckinLogs = (params?: { platform_id?: string; limit?: number }) => api.get('/checkin-logs', { params }).then(r => r.data)
+
+// Health Check
+export const triggerHealthCheck = () => api.post('/platforms/health-check').then(r => r.data)
+export const getPlatformHealth = (platformId: string) => api.get(`/platforms/${platformId}/health`).then(r => r.data)

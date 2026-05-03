@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Button, Table, Modal, Form, Input, Select, Tag, Space, message, Popconfirm, Card, Typography, Alert, Grid, Switch, Divider } from 'antd'
-import { PlusOutlined, DeleteOutlined, EditOutlined, KeyOutlined, CloudDownloadOutlined, ImportOutlined, DollarOutlined, GiftOutlined } from '@ant-design/icons'
-import { listPlatforms, createPlatform, updatePlatform, deletePlatform, fetchRemoteModels, importRemoteModels, listPlatformKeys, addPlatformKey, deletePlatformKey, doCheckinSingle } from '../api'
+import { Button, Table, Modal, Form, Input, Select, Tag, Space, message, Popconfirm, Card, Typography, Alert, Grid, Switch, Divider, Tooltip, Badge } from 'antd'
+import { PlusOutlined, DeleteOutlined, EditOutlined, KeyOutlined, CloudDownloadOutlined, ImportOutlined, DollarOutlined, GiftOutlined, ReloadOutlined, ExperimentOutlined, CheckCircleOutlined, CloseCircleOutlined, MinusCircleOutlined } from '@ant-design/icons'
+import { listPlatforms, createPlatform, updatePlatform, deletePlatform, fetchRemoteModels, importRemoteModels, listPlatformKeys, addPlatformKey, deletePlatformKey, doCheckinSingle, triggerHealthCheck, getPlatformHealth } from '../api'
 import { useAppContext } from '../ThemeContext'
 import { t } from '../i18n'
 import { platformPresets, getPresetName } from '../presets'
@@ -27,10 +27,15 @@ export default function Platforms() {
   const [fetchingId, setFetchingId] = useState<string | null>(null)
   const [importingId, setImportingId] = useState<string | null>(null)
   const [checkinId, setCheckinId] = useState<string | null>(null)
+  const [healthLoading, setHealthLoading] = useState(false)
+  const [healthRefresh, setHealthRefresh] = useState(0)
   const [platformModels, setPlatformModels] = useState<Record<string, PlatformModelState>>({})
   const { locale } = useAppContext()
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
+
+  // Reload platforms whenever healthRefresh changes (after manual trigger)
+  useEffect(() => { loadPlatforms() }, [healthRefresh])
 
   const PLATFORM_TYPES = [
     { value: 'OpenAI', label: t(locale, 'openaiType') },
@@ -46,6 +51,19 @@ export default function Platforms() {
     setLoading(true)
     try { setPlatforms(await listPlatforms()) } catch {}
     setLoading(false)
+  }
+
+  const handleTriggerHealthCheck = async () => {
+    setHealthLoading(true)
+    try {
+      await triggerHealthCheck()
+      message.success(t(locale, 'healthCheckTriggered') || '健康探测已触发')
+      // Refresh platforms after a short delay to show updated status
+      setTimeout(() => setHealthRefresh(n => n + 1), 3000)
+    } catch (e: any) {
+      message.error(e?.response?.data?.error?.message || t(locale, 'healthCheckFailed') || '探测失败')
+    }
+    setHealthLoading(false)
   }
 
   const handleFetchModels = async (record: any) => {
@@ -269,8 +287,53 @@ export default function Platforms() {
       },
     },
     {
-      title: t(locale, 'supportedModels'),
-      key: 'supported_models',
+      title: t(locale, 'healthCheck') || '健康',
+      key: 'health',
+      width: 160,
+      render: (_: any, record: any) => {
+        const lastCheck = record.last_health_check
+          ? new Date(record.last_health_check).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+          : null
+        const fails = record.consecutive_fails || 0
+        const isDisabled = record.auto_disabled
+
+        let icon: React.ReactNode = <MinusCircleOutlined style={{ color: '#999' }} />
+        let color = '#999'
+        let label = t(locale, 'neverChecked') || '未探测'
+        if (isDisabled) {
+          icon = <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+          color = '#ff4d4f'
+          label = t(locale, 'healthDisabled') || '已禁用'
+        } else if (fails > 0) {
+          icon = <CloseCircleOutlined style={{ color: '#faad14' }} />
+          color = '#faad14'
+          label = `${fails}次失败`
+        } else if (lastCheck) {
+          icon = <CheckCircleOutlined style={{ color: '#52c41a' }} />
+          color = '#52c41a'
+          label = lastCheck
+        }
+        return (
+          <Tooltip
+            title={
+              isDisabled
+                ? t(locale, 'healthDisabledTip') || `连续失败${fails}次，自动禁用`
+                : fails > 0
+                ? t(locale, 'healthFailsTip') || `连续失败${fails}次`
+                : lastCheck
+                ? t(locale, 'healthOkTip') || '健康检查正常'
+                : t(locale, 'healthNeverTip') || '从未执行过健康探测'
+            }
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ color, fontSize: 16 }}>{icon}</span>
+              <Text style={{ color, fontSize: 12 }}>{label}</Text>
+            </div>
+          </Tooltip>
+        )
+      },
+    },
+    {
       render: (_: any, record: any) => {
         const state = platformModels[record.id]
         const models = state?.models || []
@@ -353,7 +416,12 @@ export default function Platforms() {
         }}
       >
         <Title level={5} style={{ margin: 0 }}>{t(locale, 'platforms')}</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} block={isMobile}>{t(locale, 'addPlatform')}</Button>
+        <Space>
+          <Button icon={<ExperimentOutlined />} loading={healthLoading} onClick={handleTriggerHealthCheck} size="small">
+            {t(locale, 'triggerHealthCheck') || '触发探测'}
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} block={isMobile}>{t(locale, 'addPlatform')}</Button>
+        </Space>
       </div>
 
       <Card styles={{ body: { padding: 0 } }}>
