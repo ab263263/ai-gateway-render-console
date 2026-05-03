@@ -113,7 +113,7 @@ export default function ApiKeys() {
       key: 'proxy_id',
       width: 140,
       render: (v: string | null) =>
-        v ? <Text style={{ color: token.colorPrimary }}>{proxyMap[v] ?? v}</Text> : <Text type="secondary">-</Text>,
+        v ? <Text style={{ color: '#1677ff' }}>{proxyMap[v] ?? v}</Text> : <Text type="secondary">-</Text>,
     },
     {
       title: t(locale, 'apiKeyLastUsed'),
