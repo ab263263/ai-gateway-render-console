@@ -6,13 +6,17 @@
 use std::sync::Arc;
 use std::time::Instant;
 use actix_web::web;
+use crate::db::DbPool;
 use crate::proxy::handler::ProxyState;
+use reqwest::Client;
 
 /// Run a one-shot health check for all platforms.
-/// Call this from the HTTP endpoint or from the background loop.
 pub async fn check_all_platforms(state: Arc<ProxyState>) {
+    let db = state.db.clone();
+    let http_client = state.http_client.clone();
+
     let platforms = match web::block(move || {
-        crate::db::platform::list(&state.db)
+        crate::db::platform::list(&db)
     }).await {
         Ok(p) => p,
         Err(e) => {
@@ -25,23 +29,15 @@ pub async fn check_all_platforms(state: Arc<ProxyState>) {
         let platform_id = platform.id.clone();
         let base_url = platform.base_url.clone();
         let api_key = platform.api_key.clone();
-        check_single_platform(state, &platform_id, &base_url, &api_key).await;
+        check_single_platform(&db, &http_client, &platform_id, &base_url, &api_key).await;
     }
 }
 
-/// Probe one platform: POST /v1/chat/completions with minimal payload.
-/// Updates platforms table based on result.
-async fn check_single_platform(state: &Arc<ProxyState>, platform_id: &str, base_url: &str, api_key: &str) {
+async fn check_single_platform(db: &DbPool, http_client: &Client, platform_id: &str, base_url: &str, api_key: &str) {
     let start = Instant::now();
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
-    let body = serde_json::json!({
-        "model": "gpt-4o-mini",
-        "messages": [{"role": "user", "content": "ping"}],
-        "max_tokens": 1
-    });
-
-    let result = state.http_client
+    let result = http_client
         .post(&url)
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", "application/json")
@@ -54,39 +50,23 @@ async fn check_single_platform(state: &Arc<ProxyState>, platform_id: &str, base_
 
     match result {
         Ok(resp) if resp.status().is_success() => {
-            // Success — reset consecutive_fails, record health check time + latency
-            tracing::info!(
-                "health check OK: platform_id={} latency={}ms",
-                platform_id, latency_ms
-            );
+            tracing::info!("health check OK: platform_id={} latency={}ms", platform_id, latency_ms);
             web::block(move || {
-                crate::db::platform::record_health_success(
-                    &state.db, platform_id, &now, latency_ms
-                )
+                crate::db::platform::record_health_success(db, platform_id, &now, latency_ms)
             }).await.ok();
         }
         Ok(resp) => {
-            // HTTP error (4xx/5xx)
-            tracing::warn!(
-                "health check FAIL: platform_id={} status={} latency={}ms",
-                platform_id, resp.status().as_u16(), latency_ms
-            );
+            tracing::warn!("health check FAIL: platform_id={} status={} latency={}ms",
+                platform_id, resp.status().as_u16(), latency_ms);
             web::block(move || {
-                crate::db::platform::record_health_failure(
-                    &state.db, platform_id, &now, latency_ms
-                )
+                crate::db::platform::record_health_failure(db, platform_id, &now, latency_ms)
             }).await.ok();
         }
         Err(e) => {
-            // Connection/timeout error
-            tracing::warn!(
-                "health check ERROR: platform_id={} error={} latency={}ms",
-                platform_id, e, latency_ms
-            );
+            tracing::warn!("health check ERROR: platform_id={} error={} latency={}ms",
+                platform_id, e, latency_ms);
             web::block(move || {
-                crate::db::platform::record_health_failure(
-                    &state.db, platform_id, &now, latency_ms
-                )
+                crate::db::platform::record_health_failure(db, platform_id, &now, latency_ms)
             }).await.ok();
         }
     }

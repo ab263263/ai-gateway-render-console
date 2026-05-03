@@ -420,7 +420,6 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
     }
 
     use futures::StreamExt;
-    use std::time::Duration;
 
     let stream = resp.bytes_stream().map(|r| match r {
         Ok(bytes) => {
@@ -463,7 +462,9 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
                 Ok(_) => None,
                 // io::Error: the error message itself is the SSE event payload.
                 Err(e) => {
-                    let event_bytes = e.into_inner().into_bytes();
+                    // The io::Error kind is Other(String) — extract the SSE event from the message.
+                    let event_str = e.to_string();
+                    let event_bytes = event_str.into_bytes();
                     if !event_bytes.is_empty() {
                         Some(Ok(bytes::Bytes::copy_from_slice(&event_bytes)))
                     } else {
