@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import {
-  Button, Table, Modal, Form, Input, Tag, Space,
-  message, Card, Popconfirm, Typography,
+  Button, Table, Modal, Form, Input, Space,
+  message, Card, Popconfirm, Typography, Select,
 } from 'antd'
 import {
   PlusOutlined, DeleteOutlined, CopyOutlined,
 } from '@ant-design/icons'
-import { listApiKeys, createApiKey, deleteApiKey } from '../api'
+import { listApiKeys, createApiKey, deleteApiKey, listProxies } from '../api'
 import { useAppContext } from '../ThemeContext'
 import { t } from '../i18n'
 
@@ -21,8 +21,31 @@ function generateAgToken(): string {
   return token
 }
 
+function maskKey(key: string): string {
+  if (!key) return '-'
+  if (key.length <= 14) return key // won't happen but safe
+  const prefix = key.slice(0, 11)  // sk-ag- + first 5 chars = 11
+  const suffix = key.slice(-4)
+  return `${prefix}****${suffix}`
+}
+
+interface ApiKeyRecord {
+  id: string
+  name: string
+  key: string
+  proxy_id: string | null
+  created_at: string
+  last_used: string | null
+}
+
+interface ProxyOption {
+  id: string
+  name: string
+}
+
 export default function ApiKeys() {
-  const [keys, setKeys] = useState<any[]>([])
+  const [keys, setKeys] = useState<ApiKeyRecord[]>([])
+  const [proxies, setProxies] = useState<ProxyOption[]>([])
   const [loading, setLoading] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [form] = Form.useForm()
@@ -34,14 +57,20 @@ export default function ApiKeys() {
 
   const loadAll = async () => {
     setLoading(true)
-    try { setKeys(await listApiKeys()) } catch {}
+    try {
+      const [keysData, proxiesData] = await Promise.all([listApiKeys(), listProxies()])
+      setKeys(keysData)
+      setProxies(proxiesData)
+    } catch (e) {
+      message.error(t(locale, 'loadFailed'))
+    }
     setLoading(false)
   }
 
   const handleCreate = async (values: any) => {
     try {
       const key = generateAgToken()
-      await createApiKey({ name: values.name, key, proxy_id: null })
+      await createApiKey({ name: values.name, key, proxy_id: values.proxy_id || null })
       setCreatedKey(key)
       message.success(t(locale, 'createSuccess'))
       loadAll()
@@ -49,12 +78,14 @@ export default function ApiKeys() {
   }
 
   const handleDelete = async (id: string) => {
-    try { await deleteApiKey(id); message.success(t(locale, 'deleteSuccess')); loadAll() } catch {}
+    try { await deleteApiKey(id); message.success(t(locale, 'deleteSuccess')); loadAll() } catch { message.error(t(locale, 'deleteFailed')) }
   }
 
   const copyText = (text: string) => {
     navigator.clipboard.writeText(text).then(() => message.success('Copied!')).catch(() => {})
   }
+
+  const proxyMap = Object.fromEntries(proxies.map(p => [p.id, p.name]))
 
   const columns = [
     {
@@ -68,25 +99,43 @@ export default function ApiKeys() {
       title: t(locale, 'apiKeyKey'),
       dataIndex: 'key',
       key: 'key',
+      width: 220,
       render: (v: string) => (
         <Space>
-          <Text code style={{ fontSize: 12 }}>{v}</Text>
+          <Text code style={{ fontSize: 12 }}>{maskKey(v)}</Text>
           <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copyText(v)} />
         </Space>
       ),
     },
     {
+      title: t(locale, 'proxyBinding'),
+      dataIndex: 'proxy_id',
+      key: 'proxy_id',
+      width: 140,
+      render: (v: string | null) =>
+        v ? <Text style={{ color: token.colorPrimary }}>{proxyMap[v] ?? v}</Text> : <Text type="secondary">-</Text>,
+    },
+    {
+      title: t(locale, 'apiKeyLastUsed'),
+      dataIndex: 'last_used',
+      key: 'last_used',
+      width: 170,
+      render: (v: string | null) =>
+        v ? <Text type="secondary" style={{ fontSize: 12 }}>{new Date(v).toLocaleString()}</Text> : <Text type="secondary">-</Text>,
+    },
+    {
       title: t(locale, 'apiKeyCreatedAt'),
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 180,
-      render: (v: string) => <Text type="secondary" style={{ fontSize: 12 }}>{v ? new Date(v).toLocaleString() : '-'}</Text>,
+      width: 170,
+      render: (v: string) =>
+        <Text type="secondary" style={{ fontSize: 12 }}>{v ? new Date(v).toLocaleString() : '-'}</Text>,
     },
     {
       title: t(locale, 'action'),
       key: 'action',
       width: 60,
-      render: (_: any, record: any) => (
+      render: (_: any, record: ApiKeyRecord) => (
         <Popconfirm title={t(locale, 'deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
           <Button type="text" danger size="small" icon={<DeleteOutlined />} />
         </Popconfirm>
@@ -98,11 +147,19 @@ export default function ApiKeys() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Title level={5} style={{ margin: 0 }}>{t(locale, 'apiKeys')}</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setCreateOpen(true); setCreatedKey('') }}>{t(locale, 'newApiKey')}</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setCreateOpen(true); setCreatedKey('') }}>
+          {t(locale, 'newApiKey')}
+        </Button>
       </div>
 
       <Card styles={{ body: { padding: 0 } }}>
-        <Table columns={columns} dataSource={keys} rowKey="id" loading={loading} pagination={{ pageSize: 20, showSizeChanger: false }} />
+        <Table
+          columns={columns}
+          dataSource={keys}
+          rowKey="id"
+          loading={loading}
+          pagination={{ pageSize: 20, showSizeChanger: false }}
+        />
       </Card>
 
       <Modal
@@ -139,6 +196,13 @@ export default function ApiKeys() {
           <Form form={form} layout="vertical" onFinish={handleCreate}>
             <Form.Item name="name" label={t(locale, 'apiKeyName')} rules={[{ required: true }]}>
               <Input placeholder={t(locale, 'apiKeyNamePlaceholder')} />
+            </Form.Item>
+            <Form.Item name="proxy_id" label={t(locale, 'proxyBinding')}>
+              <Select
+                allowClear
+                placeholder={t(locale, 'proxyBindingPlaceholder')}
+                options={proxies.map(p => ({ label: p.name, value: p.id }))}
+              />
             </Form.Item>
           </Form>
         )}

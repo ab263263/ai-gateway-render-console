@@ -10,6 +10,7 @@ use base64::Engine as _;
 use ai_gateway::proxy::handler::ProxyState;
 use ai_gateway::lb::BackendSelector;
 use ai_gateway::api::settings::SharedAppConfig;
+use ai_gateway::health::health_check_loop;
 
 fn is_admin_authorized(auth_header: Option<&header::HeaderValue>, username: &str, password: &str) -> bool {
     let Some(value) = auth_header.and_then(|v| v.to_str().ok()) else {
@@ -79,6 +80,9 @@ async fn main() -> std::io::Result<()> {
         selector,
         http_client,
     });
+
+    // Spawn background health check loop (runs every 5 minutes)
+    tokio::spawn(health_check_loop(proxy_state.clone()));
 
     let static_dir = app_config.static_dir();
     let host = app_config.server.host.clone();

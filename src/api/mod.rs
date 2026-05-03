@@ -27,6 +27,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 .route("/platforms/{id}/remote-models/import", web::post().to(platform::import_remote_models))
                 .route("/platforms/{id}/chat-test", web::post().to(platform::test_platform_chat))
                 .route("/platforms/{id}/probe-model", web::post().to(platform::probe_platform_model))
+                .route("/platforms/health-check", web::post().to(platform::trigger_health_check))
+                .route("/platforms/{id}/health", web::get().to(platform::get_platform_health))
                 // 平台多Key管理
                 .route("/platforms/{id}/keys", web::get().to(platform_key::list_keys))
                 .route("/platforms/{id}/keys", web::post().to(platform_key::add_key))

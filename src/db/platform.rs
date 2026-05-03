@@ -119,10 +119,9 @@ pub fn record_failure(pool: &DbPool, platform_id: &str) -> AppResult<()> {
         "UPDATE platforms SET fail_count = fail_count + 1, consecutive_fails = consecutive_fails + 1, updated_at = ?2 WHERE id = ?1",
         rusqlite::params![platform_id, chrono::Utc::now().to_rfc3339()],
     )?;
-    // Auto-disable after 5 consecutive failures
     conn.execute(
-        "UPDATE platforms SET auto_disabled = 1, status = '\"Disabled\"' WHERE id = ?1 AND consecutive_fails >= 5 AND auto_disabled = 0",
-        [platform_id],
+        "UPDATE platforms SET auto_disabled = 1, status = ?2 WHERE id = ?1 AND consecutive_fails >= 5 AND auto_disabled = 0",
+        rusqlite::params![platform_id, serde_json::to_string(&PlatformStatus::Disabled)?],
     )?;
     Ok(())
 }
@@ -131,19 +130,44 @@ pub fn record_failure(pool: &DbPool, platform_id: &str) -> AppResult<()> {
 pub fn record_success(pool: &DbPool, platform_id: &str) -> AppResult<()> {
     let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
     conn.execute(
-        "UPDATE platforms SET consecutive_fails = 0, auto_disabled = 0, status = '\"Active\"', updated_at = ?2 WHERE id = ?1",
-        rusqlite::params![platform_id, chrono::Utc::now().to_rfc3339()],
+        "UPDATE platforms SET consecutive_fails = 0, auto_disabled = 0, status = ?2, updated_at = ?3 WHERE id = ?1",
+        rusqlite::params![platform_id, serde_json::to_string(&PlatformStatus::Active)?, chrono::Utc::now().to_rfc3339()],
     )?;
     Ok(())
 }
 
-/// Update health check timestamp
 pub fn update_health_check(pool: &DbPool, platform_id: &str) -> AppResult<()> {
     let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "UPDATE platforms SET last_health_check = ?2 WHERE id = ?1",
         rusqlite::params![platform_id, now],
+    )?;
+    Ok(())
+}
+
+/// Record a successful health check: reset consecutive_fails, update latency + timestamp.
+pub fn record_health_success(pool: &DbPool, platform_id: &str, timestamp: &str, latency_ms: i64) -> AppResult<()> {
+    let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    conn.execute(
+        "UPDATE platforms SET consecutive_fails = 0, auto_disabled = 0, status = ?2, last_health_check = ?3, updated_at = ?3 WHERE id = ?1",
+        rusqlite::params![platform_id, serde_json::to_string(&PlatformStatus::Active)?, timestamp],
+    )?;
+    Ok(())
+}
+
+/// Record a failed health check: increment consecutive_fails, update latency + timestamp.
+/// Auto-disables after 5 consecutive failures (distinct from key-level threshold of 3).
+pub fn record_health_failure(pool: &DbPool, platform_id: &str, timestamp: &str, latency_ms: i64) -> AppResult<()> {
+    let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    conn.execute(
+        "UPDATE platforms SET consecutive_fails = consecutive_fails + 1, updated_at = ?2 WHERE id = ?1",
+        rusqlite::params![platform_id, timestamp],
+    )?;
+    // Auto-disable after 5 consecutive failures (platform-level threshold)
+    conn.execute(
+        "UPDATE platforms SET auto_disabled = 1, status = ?2 WHERE id = ?1 AND consecutive_fails >= 5 AND auto_disabled = 0",
+        rusqlite::params![platform_id, serde_json::to_string(&PlatformStatus::Disabled)?],
     )?;
     Ok(())
 }

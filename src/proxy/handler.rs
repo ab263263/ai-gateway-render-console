@@ -200,15 +200,15 @@ async fn handle_request(
         let model_id_str = backend.model_id.clone();
         let platform_name = platform.name.clone();
 
-        // Try multi-key first, fall back to platform.api_key
+        // Key selection: try multi-key pool first, fall back to platform.api_key
         let db_for_key = state.db.clone();
         let pid_for_key = backend.platform_id.clone();
         let fallback_api_key = platform.api_key.clone();
-        let api_key_for_request = web::block(move || {
-            // Try to select from platform_keys
-            match crate::db::platform_key::select_key(&db_for_key, &pid_for_key) {
-                Ok(Some(key)) => Ok::<String, crate::error::AppError>(key),
-                _ => Ok::<String, crate::error::AppError>(fallback_api_key),
+        let (key_id, api_key_for_request) = web::block(move || {
+            match crate::lb::KeySelector::select(&db_for_key, &pid_for_key) {
+                Ok(Some(sk)) => Ok::<(Option<String>, String), crate::error::AppError>((Some(sk.id), sk.api_key)),
+                Ok(None) => Ok::<(Option<String>, String), crate::error::AppError>((None, fallback_api_key)),
+                Err(_) => Ok::<(Option<String>, String), crate::error::AppError>((None, fallback_api_key)),
             }
         }).await.map_err(|e| AppError::Internal(e.to_string()))??;
 
@@ -245,6 +245,14 @@ async fn handle_request(
                     let db_health = state.db.clone();
                     let pid_health = backend.platform_id.clone();
                     web::block(move || crate::db::platform::record_success(&db_health, &pid_health)).await.ok();
+
+                    // Record key success and reset fail_count
+                    if let Some(ref kid) = key_id {
+                        let db_key = state.db.clone();
+                        let pkid = backend.platform_id.clone();
+                        let kkid = kid.clone();
+                        web::block(move || crate::lb::KeySelector::mark_success(&db_key, &pkid, &kkid)).await.ok();
+                    }
 
                     if is_stream {
                         let db = state.db.clone();
@@ -301,6 +309,14 @@ async fn handle_request(
                     let pid_health = backend.platform_id.clone();
                     web::block(move || crate::db::platform::record_failure(&db_health, &pid_health)).await.ok();
 
+                    // Record key failure and increment fail_count
+                    if let Some(ref kid) = key_id {
+                        let db_key = state.db.clone();
+                        let pkid = backend.platform_id.clone();
+                        let kkid = kid.clone();
+                        web::block(move || crate::lb::KeySelector::mark_failed(&db_key, &pkid, &kkid)).await.ok();
+                    }
+
                     let db = state.db.clone();
                     let pid = proxy.id.clone();
                     let rid = route.id.clone();
@@ -334,6 +350,14 @@ async fn handle_request(
                 let db_health = state.db.clone();
                 let pid_health = backend.platform_id.clone();
                 web::block(move || crate::db::platform::record_failure(&db_health, &pid_health)).await.ok();
+
+                // Record key failure on connection error
+                if let Some(ref kid) = key_id {
+                    let db_key = state.db.clone();
+                    let pkid = backend.platform_id.clone();
+                    let kkid = kid.clone();
+                    web::block(move || crate::lb::KeySelector::mark_failed(&db_key, &pkid, &kkid)).await.ok();
+                }
 
                 let db = state.db.clone();
                 let pid = proxy.id.clone();
@@ -385,7 +409,8 @@ fn build_forward_request(unified: &UnifiedRequest, platform: &crate::models::pla
     }
 }
 
-/// Enhanced stream handler with error filtering (P0-4: SSE error filtering)
+/// Stream handler: UTF-8 validates each upstream chunk, skips invalid bytes,
+/// sends a final SSE error event on upstream disconnect/timeout, then terminates.
 async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
     let s = resp.status();
     if !s.is_success() {
@@ -394,59 +419,62 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
         ).body(resp.text().await.unwrap_or_default());
     }
 
-    // Wrap the byte stream with SSE error filtering
-    let filtered_stream = resp.bytes_stream().filter_map(|r| {
-        let result = match r {
-            Ok(bytes) => {
-                // Filter out invalid UTF-8 sequences and empty chunks
-                if bytes.is_empty() {
-                    return std::future::ready(None::<Result<bytes::Bytes, reqwest::Error>>);
-                }
-                // Validate UTF-8, skip chunks with invalid bytes
-                match std::str::from_utf8(&bytes) {
-                    Ok(text) => {
-                        // Skip chunks that are only whitespace
-                        let trimmed = text.trim();
-                        if trimmed.is_empty() {
-                            return std::future::ready(None::<Result<bytes::Bytes, reqwest::Error>>);
-                        }
-                        // Validate SSE: each line should be "data: ..." or "event: ..." or empty line
-                        // If it contains invalid JSON in data lines, we still pass it through
-                        // but filter out obvious errors
-                        if trimmed.starts_with("data: [DONE]") || trimmed.starts_with("data:") || trimmed.starts_with("event:") || trimmed.starts_with("id:") || trimmed.starts_with("retry:") || trimmed == "" {
-                            std::future::ready(Some(Ok(bytes)))
-                        } else if trimmed.starts_with("{") || trimmed.starts_with("}") || trimmed.starts_with("[") || trimmed == "]" {
-                            // JSON fragments are OK for SSE
-                            std::future::ready(Some(Ok(bytes)))
-                        } else {
-                            // Unknown content - could be error, pass through with warning
-                            tracing::warn!("SSE: unexpected chunk: {}", &trimmed[..trimmed.len().min(200)]);
-                            std::future::ready(Some(Ok(bytes)))
-                        }
-                    }
-                    Err(_) => {
-                        // Invalid UTF-8 - skip this chunk
-                        tracing::warn!("SSE: filtering invalid UTF-8 chunk ({} bytes)", bytes.len());
-                        std::future::ready(None::<Result<bytes::Bytes, reqwest::Error>>)
-                    }
-                }
+    use futures::StreamExt;
+    use std::time::Duration;
+
+    let stream = resp.bytes_stream().map(|r| match r {
+        Ok(bytes) => {
+            if bytes.is_empty() {
+                return Ok::<_, reqwest::Error>(bytes::Bytes::new());
             }
-            Err(e) => {
-                tracing::warn!("SSE stream error: {}", e);
-                // Convert stream error to a final SSE error event
-                let error_event = format!("data: {{\"error\": \"{}\"}}\n\n", e);
-                std::future::ready(Some(Ok(bytes::Bytes::from(error_event))))
+            // Validate UTF-8; skip invalid bytes rather than crashing the stream.
+            if std::str::from_utf8(&bytes).is_ok() {
+                Ok(bytes)
+            } else {
+                tracing::warn!("SSE: skipping chunk with invalid UTF-8 ({} bytes)", bytes.len());
+                Ok(bytes::Bytes::new())
             }
-        };
-        result
+        }
+        Err(e) => {
+            let etype = if e.is_timeout() {
+                "timeout"
+            } else if e.is_connect() {
+                "connection_error"
+            } else {
+                "stream_error"
+            };
+            tracing::warn!("SSE upstream error ({etype}): {e}");
+            // Format: data: {"error":"type","message":"description"}\n\n
+            let msg = e.to_string().replace('"', "\\\"");
+            let event = format!("data: {{\"error\":\"{etype}\",\"message\":\"{msg}\"}}\n\n");
+            Err(reqwest::Error::new(
+                std::sync::Mutex::new(e),
+                reqwest::error::Kind::Request,
+                Some(bytes::Bytes::copy_from_slice(event.as_bytes())),
+            ))
+        }
     });
 
     HttpResponse::Ok()
         .content_type("text/event-stream")
         .insert_header(("Cache-Control", "no-cache"))
-        .insert_header(("Connection", "keep-alive"))
         .insert_header(("X-Accel-Buffering", "no"))
-        .streaming(filtered_stream.map(|r| r.map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))))
+        .streaming(stream.filter_map(|r| async move {
+            match r {
+                // Forward valid, non-empty chunks.
+                Ok(bytes) if !bytes.is_empty() => Some(Ok(bytes)),
+                // Skip empty ok chunks.
+                Ok(_) => None,
+                // Err: recover the SSE error event from the injected payload and emit it
+                // as a final chunk before the stream ends.
+                Err(e) => {
+                    let etype = if e.is_timeout() { "timeout" } else { "stream_error" };
+                    let msg = e.to_string().replace('"', "\\\"");
+                    let event = format!("data: {{\"error\":\"{etype}\",\"message\":\"{msg}\"}}\n\n");
+                    Some(Ok(bytes::Bytes::copy_from_slice(event.as_bytes())))
+                }
+            }
+        }).map(|r| r.map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))))
 }
 
 fn classify_error(c: u16) -> ErrorType { match c { 429 => ErrorType::RateLimit, 408 => ErrorType::Timeout, s if s >= 500 => ErrorType::ServerError, _ => ErrorType::ConnectionError } }

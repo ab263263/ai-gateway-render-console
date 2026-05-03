@@ -7,3 +7,4 @@ pub mod protocol;
 pub mod proxy;
 pub mod api;
 pub mod checkin;
+pub mod health;

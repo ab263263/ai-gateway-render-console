@@ -24,6 +24,7 @@ pub struct CreatePlatformKeyRequest {
 
 fn default_weight() -> i32 { 1 }
 
+/// Returns all keys for a platform, regardless of status.
 pub fn list_by_platform(pool: &DbPool, platform_id: &str) -> AppResult<Vec<PlatformKey>> {
     let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
     let mut stmt = conn.prepare(
@@ -45,31 +46,71 @@ pub fn list_by_platform(pool: &DbPool, platform_id: &str) -> AppResult<Vec<Platf
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
-/// Select the next available key for a platform using weighted random selection
-pub fn select_key(pool: &DbPool, platform_id: &str) -> AppResult<Option<String>> {
-    let keys = list_by_platform(pool, platform_id)?;
-    let active: Vec<&PlatformKey> = keys.iter().filter(|k| k.status == "Active").collect();
-    if active.is_empty() {
-        return Ok(keys.first().map(|k| k.api_key.clone())); // fallback to first key even if disabled
+/// Returns keys that are eligible for selection:
+/// - status = 'Active'
+/// - fail_count < 3
+/// - No recent failure within the 30s cooldown window
+pub fn list_active_keys(pool: &DbPool, platform_id: &str) -> AppResult<Vec<PlatformKey>> {
+    let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    let thirty_secs_ago = chrono::Utc::now()
+        .checked_sub_signed(chrono::Duration::seconds(30))
+        .unwrap_or_else(chrono::Utc::now)
+        .to_rfc3339();
+
+    let mut stmt = conn.prepare(
+        "SELECT id, platform_id, api_key, weight, status, fail_count, last_used, last_fail, created_at
+         FROM platform_keys
+         WHERE platform_id = ?1
+           AND status = 'Active'
+           AND fail_count < 3
+           AND (last_fail IS NULL OR last_fail < ?2)
+         ORDER BY last_used ASC NULLS FIRST, created_at ASC"
+    )?;
+    let rows = stmt.query_map(rusqlite::params![platform_id, thirty_secs_ago], |row| {
+        Ok(PlatformKey {
+            id: row.get(0)?,
+            platform_id: row.get(1)?,
+            api_key: row.get(2)?,
+            weight: row.get(3)?,
+            status: row.get(4)?,
+            fail_count: row.get(5)?,
+            last_used: row.get(6)?,
+            last_fail: row.get(7)?,
+            created_at: row.get(8)?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Select a key using weighted random, breaking ties by oldest last_used (fair round-robin).
+/// Returns (key_id, api_key) or None if no active keys exist.
+pub fn select_key(pool: &DbPool, platform_id: &str) -> AppResult<Option<(String, String)>> {
+    let keys = list_active_keys(pool, platform_id)?;
+    if keys.is_empty() {
+        return Ok(None);
     }
-    let total_weight: i32 = active.iter().map(|k| k.weight).sum();
+    let total_weight: i32 = keys.iter().map(|k| k.weight).sum();
     if total_weight <= 0 {
-        return Ok(active.first().map(|k| k.api_key.clone()));
+        // No valid weights — fall back to oldest-used key
+        let selected = &keys[0];
+        update_last_used(pool, &selected.id)?;
+        return Ok(Some((selected.id.clone(), selected.api_key.clone())));
     }
     let mut rng_val = rand::random::<u32>() as i32 % total_weight;
-    for key in &active {
+    for key in &keys {
         if rng_val < key.weight {
-            // Update last_used
-            let _ = update_last_used(pool, &key.id);
-            return Ok(Some(key.api_key.clone()));
+            update_last_used(pool, &key.id)?;
+            return Ok(Some((key.id.clone(), key.api_key.clone())));
         }
         rng_val -= key.weight;
     }
-    let selected = active.last().unwrap();
-    let _ = update_last_used(pool, &selected.id);
-    Ok(Some(selected.api_key.clone()))
+    // Fallback: last key (shouldn't reach here)
+    let selected = keys.last().unwrap();
+    update_last_used(pool, &selected.id)?;
+    Ok(Some((selected.id.clone(), selected.api_key.clone())))
 }
 
+/// Add a new key for a platform.
 pub fn create(pool: &DbPool, platform_id: &str, req: &CreatePlatformKeyRequest) -> AppResult<PlatformKey> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -91,20 +132,15 @@ pub fn create(pool: &DbPool, platform_id: &str, req: &CreatePlatformKeyRequest) 
     })
 }
 
+/// Delete a key by its id.
 pub fn delete(pool: &DbPool, id: &str) -> AppResult<()> {
     let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
     conn.execute("DELETE FROM platform_keys WHERE id = ?1", [id])?;
     Ok(())
 }
 
-fn update_last_used(pool: &DbPool, id: &str) -> AppResult<()> {
-    let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
-    let now = chrono::Utc::now().to_rfc3339();
-    conn.execute("UPDATE platform_keys SET last_used = ?2 WHERE id = ?1", rusqlite::params![id, now])?;
-    Ok(())
-}
-
-/// Record a key failure, auto-disable after 3 consecutive fails
+/// Mark a specific key as failed: increment fail_count, set last_fail.
+/// Auto-disables the key if fail_count >= 3.
 pub fn record_key_failure(pool: &DbPool, key_id: &str) -> AppResult<()> {
     let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
     let now = chrono::Utc::now().to_rfc3339();
@@ -119,12 +155,20 @@ pub fn record_key_failure(pool: &DbPool, key_id: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// Reset fail count on success
+/// Mark a specific key as succeeded: reset fail_count to 0, ensure status is Active.
 pub fn record_key_success(pool: &DbPool, key_id: &str) -> AppResult<()> {
     let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
     conn.execute(
         "UPDATE platform_keys SET fail_count = 0, status = 'Active' WHERE id = ?1",
         [key_id],
     )?;
+    Ok(())
+}
+
+/// Update last_used timestamp for a key.
+fn update_last_used(pool: &DbPool, id: &str) -> AppResult<()> {
+    let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    let now = chrono::Utc::now().to_rfc3339();
+    conn.execute("UPDATE platform_keys SET last_used = ?2 WHERE id = ?1", rusqlite::params![id, now])?;
     Ok(())
 }
