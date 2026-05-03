@@ -166,7 +166,7 @@ pub fn record_key_success(pool: &DbPool, key_id: &str) -> AppResult<()> {
 }
 
 /// Update last_used timestamp for a key.
-fn update_last_used(pool: &DbPool, id: &str) -> AppResult<()> {
+pub fn update_last_used(pool: &DbPool, id: &str) -> AppResult<()> {
     let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute("UPDATE platform_keys SET last_used = ?2 WHERE id = ?1", rusqlite::params![id, now])?;

@@ -707,13 +707,11 @@ pub async fn test_platform_chat(
 
 /// Trigger a one-shot health check for all active platforms (fire-and-forget).
 pub async fn trigger_health_check(
-    db: web::Data<DbPool>,
     proxy_state: web::Data<std::sync::Arc<crate::proxy::handler::ProxyState>>,
 ) -> AppResult<HttpResponse> {
-    let db = db.into_inner();
     let state = proxy_state.into_inner();
     tokio::spawn(async move {
-        ai_gateway::health::check_all_platforms(&state).await;
+        ai_gateway::health::check_all_platforms(state).await;
     });
     Ok(HttpResponse::Accepted().json(serde_json::json!({
         "success": true,

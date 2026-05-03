@@ -10,7 +10,7 @@ use crate::proxy::handler::ProxyState;
 
 /// Run a one-shot health check for all platforms.
 /// Call this from the HTTP endpoint or from the background loop.
-pub async fn check_all_platforms(state: &Arc<ProxyState>) {
+pub async fn check_all_platforms(state: Arc<ProxyState>) {
     let platforms = match web::block(move || {
         crate::db::platform::list(&state.db)
     }).await {
@@ -22,7 +22,10 @@ pub async fn check_all_platforms(state: &Arc<ProxyState>) {
     };
 
     for platform in platforms.into_iter().filter(|p| p.status == crate::models::platform::PlatformStatus::Active) {
-        check_single_platform(state, &platform.id, &platform.base_url, &platform.api_key).await;
+        let platform_id = platform.id.clone();
+        let base_url = platform.base_url.clone();
+        let api_key = platform.api_key.clone();
+        check_single_platform(state, &platform_id, &base_url, &api_key).await;
     }
 }
 
@@ -94,7 +97,7 @@ async fn check_single_platform(state: &Arc<ProxyState>, platform_id: &str, base_
 pub async fn health_check_loop(proxy_state: Arc<ProxyState>) {
     tracing::info!("health check loop started (interval: 5 minutes)");
     loop {
-        check_all_platforms(&proxy_state).await;
+        check_all_platforms(proxy_state.clone()).await;
         tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
     }
 }

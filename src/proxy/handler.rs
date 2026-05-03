@@ -425,7 +425,7 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
     let stream = resp.bytes_stream().map(|r| match r {
         Ok(bytes) => {
             if bytes.is_empty() {
-                return Ok::<_, reqwest::Error>(bytes::Bytes::new());
+                return Ok::<_, std::io::Error>(bytes::Bytes::new());
             }
             // Validate UTF-8; skip invalid bytes rather than crashing the stream.
             if std::str::from_utf8(&bytes).is_ok() {
@@ -444,14 +444,10 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
                 "stream_error"
             };
             tracing::warn!("SSE upstream error ({etype}): {e}");
-            // Format: data: {"error":"type","message":"description"}\n\n
+            // Emit SSE error event as final chunk, then end stream.
             let msg = e.to_string().replace('"', "\\\"");
             let event = format!("data: {{\"error\":\"{etype}\",\"message\":\"{msg}\"}}\n\n");
-            Err(reqwest::Error::new(
-                std::sync::Mutex::new(e),
-                reqwest::error::Kind::Request,
-                Some(bytes::Bytes::copy_from_slice(event.as_bytes())),
-            ))
+            Err(std::io::Error::new(std::io::ErrorKind::Other, event))
         }
     });
 
@@ -465,13 +461,14 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
                 Ok(bytes) if !bytes.is_empty() => Some(Ok(bytes)),
                 // Skip empty ok chunks.
                 Ok(_) => None,
-                // Err: recover the SSE error event from the injected payload and emit it
-                // as a final chunk before the stream ends.
+                // io::Error: the error message itself is the SSE event payload.
                 Err(e) => {
-                    let etype = if e.is_timeout() { "timeout" } else { "stream_error" };
-                    let msg = e.to_string().replace('"', "\\\"");
-                    let event = format!("data: {{\"error\":\"{etype}\",\"message\":\"{msg}\"}}\n\n");
-                    Some(Ok(bytes::Bytes::copy_from_slice(event.as_bytes())))
+                    let event_bytes = e.into_inner().into_bytes();
+                    if !event_bytes.is_empty() {
+                        Some(Ok(bytes::Bytes::copy_from_slice(&event_bytes)))
+                    } else {
+                        None
+                    }
                 }
             }
         }).map(|r| r.map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))))

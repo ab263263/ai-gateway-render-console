@@ -147,7 +147,7 @@ pub fn update_health_check(pool: &DbPool, platform_id: &str) -> AppResult<()> {
 }
 
 /// Record a successful health check: reset consecutive_fails, update latency + timestamp.
-pub fn record_health_success(pool: &DbPool, platform_id: &str, timestamp: &str, latency_ms: i64) -> AppResult<()> {
+pub fn record_health_success(pool: &DbPool, platform_id: &str, timestamp: &str, _latency_ms: i64) -> AppResult<()> {
     let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
     conn.execute(
         "UPDATE platforms SET consecutive_fails = 0, auto_disabled = 0, status = ?2, last_health_check = ?3, updated_at = ?3 WHERE id = ?1",
@@ -158,7 +158,7 @@ pub fn record_health_success(pool: &DbPool, platform_id: &str, timestamp: &str, 
 
 /// Record a failed health check: increment consecutive_fails, update latency + timestamp.
 /// Auto-disables after 5 consecutive failures (distinct from key-level threshold of 3).
-pub fn record_health_failure(pool: &DbPool, platform_id: &str, timestamp: &str, latency_ms: i64) -> AppResult<()> {
+pub fn record_health_failure(pool: &DbPool, platform_id: &str, timestamp: &str, _latency_ms: i64) -> AppResult<()> {
     let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
     conn.execute(
         "UPDATE platforms SET consecutive_fails = consecutive_fails + 1, updated_at = ?2 WHERE id = ?1",
