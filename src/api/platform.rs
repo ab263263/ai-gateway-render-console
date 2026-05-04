@@ -709,7 +709,7 @@ pub async fn test_platform_chat(
 pub async fn trigger_health_check(
     proxy_state: web::Data<std::sync::Arc<crate::proxy::handler::ProxyState>>,
 ) -> AppResult<HttpResponse> {
-    let state = proxy_state.into_inner();
+    let state = proxy_state.get_ref().clone();
     tokio::spawn(async move {
         crate::health::check_all_platforms(state).await;
     });
