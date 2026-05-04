@@ -78,6 +78,32 @@ export const importRemoteModels = (id: string, data?: { model_ids?: string[]; ma
 export const testPlatformChat = (id: string, data: { model_id: string; message: string; max_tokens?: number }) => api.post(`/platforms/${id}/chat-test`, data).then(r => r.data)
 export const probePlatformModel = (id: string, data: { model_id: string; message?: string; max_tokens?: number }) => api.post(`/platforms/${id}/probe-model`, data).then(r => r.data)
 
+export async function runProxyChatCompletion(data: {
+  model: string
+  messages: { role: string; content: string }[]
+  max_tokens?: number
+  temperature?: number
+  stream?: boolean
+}) {
+  const response = await fetch(`${proxyBaseURL()}/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(text || `HTTP ${response.status}`)
+  }
+
+  if (data.stream) {
+    return { stream: true as const, response }
+  }
+
+  return { stream: false as const, data: await response.json() }
+}
 
 // Models
 export const listModels = () => api.get('/models').then(r => r.data)

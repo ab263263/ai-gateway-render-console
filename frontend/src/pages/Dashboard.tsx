@@ -1,10 +1,19 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Card, Col, Row, Statistic, Tag, Typography, Button, Tooltip, Badge, Progress } from 'antd'
+import { Card, Col, Row, Statistic, Tag, Typography, Button, Tooltip, Badge, Progress, Grid, Space, Empty } from 'antd'
 import {
-  CloudServerOutlined, ApiOutlined,
-  CheckCircleOutlined, SafetyCertificateOutlined,
-  ClockCircleOutlined, ReloadOutlined, DollarOutlined, ArrowUpOutlined, ArrowDownOutlined,
-  ThunderboltOutlined, WalletOutlined, WarningOutlined, CloseCircleOutlined,
+  CloudServerOutlined,
+  ApiOutlined,
+  CheckCircleOutlined,
+  SafetyCertificateOutlined,
+  ClockCircleOutlined,
+  ReloadOutlined,
+  DollarOutlined,
+  ArrowUpOutlined,
+  ArrowDownOutlined,
+  ThunderboltOutlined,
+  WalletOutlined,
+  WarningOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons'
 import { getOverview, listProxies, listPlatforms, getProxyStats, getPlatformStats, listBalances } from '../api'
 import { useAppContext } from '../ThemeContext'
@@ -31,6 +40,9 @@ interface PlatformWithStats {
   name: string
   type: string
   base_url: string
+  balance?: number | null
+  auto_disabled?: boolean
+  consecutive_fails?: number
   stats?: {
     total_requests: number
     success_rate: number
@@ -46,7 +58,9 @@ export default function Dashboard() {
   const [platforms, setPlatforms] = useState<PlatformWithStats[]>([])
   const [balances, setBalances] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const { locale, isDark } = useAppContext()
+  const { locale } = useAppContext()
+  const screens = Grid.useBreakpoint()
+  const isMobile = !screens.md
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -60,41 +74,45 @@ export default function Dashboard() {
       setStats(overview)
       setBalances(balanceList)
 
-      // Fetch per-proxy stats
       const proxiesWithStats: ProxyWithStats[] = await Promise.all(
-        proxyList.map(async (p: any) => {
+        proxyList.map(async (proxy: any) => {
           try {
-            const pStats = await getProxyStats(p.id).catch(() => null)
-            return { ...p, stats: pStats || undefined }
+            const proxyStats = await getProxyStats(proxy.id).catch(() => null)
+            return { ...proxy, stats: proxyStats || undefined }
           } catch {
-            return { ...p }
+            return { ...proxy }
           }
-        })
+        }),
       )
       setProxies(proxiesWithStats)
 
-      // Fetch per-platform stats
       const platformsWithStats: PlatformWithStats[] = await Promise.all(
-        platformList.map(async (p: any) => {
+        platformList.map(async (platform: any) => {
           try {
-            const pStats = await getPlatformStats(p.id).catch(() => null)
-            return { ...p, stats: pStats || undefined }
+            const platformStats = await getPlatformStats(platform.id).catch(() => null)
+            const balance = balanceList.find((item: any) => item.id === platform.id)
+            return {
+              ...platform,
+              balance: balance?.balance ?? null,
+              stats: platformStats || undefined,
+            }
           } catch {
-            return { ...p }
+            return { ...platform }
           }
-        })
+        }),
       )
       setPlatforms(platformsWithStats)
-    } catch {
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const getPlatformDisplayName = (name: string) => {
-    const preset = platformPresets.find(p => p.name === name)
+    const preset = platformPresets.find((item) => item.name === name)
     return preset ? getPresetName(preset, locale) : name
   }
 
@@ -104,7 +122,6 @@ export default function Dashboard() {
     return count.toString()
   }
 
-  // Stat item component for inline display
   const StatItem = ({ label, value, color }: { label: string; value: string; color?: string }) => (
     <div>
       <Text type="secondary" style={{ fontSize: 11 }}>{label}</Text>
@@ -114,176 +131,103 @@ export default function Dashboard() {
 
   return (
     <div>
-      {/* Header with refresh button */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={5} style={{ margin: 0 }}>{t(locale, 'dashboard')}</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', marginBottom: 16, gap: 12, flexDirection: isMobile ? 'column' : 'row' }}>
+        <div>
+          <Title level={5} style={{ margin: 0 }}>{t(locale, 'dashboard')}</Title>
+          <div style={{ marginTop: 4 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {locale === 'zh' ? '集中查看请求、平台、虚拟模型与余额的全局运行状态。' : 'Track requests, platforms, virtual models, and balances from one overview.'}
+            </Text>
+          </div>
+        </div>
         <Tooltip title={t(locale, 'refresh')}>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={loadData}
-            loading={loading}
-            type="text"
-          />
+          <Button icon={<ReloadOutlined />} onClick={loadData} loading={loading} type={isMobile ? 'default' : 'text'} block={isMobile}>
+            {isMobile ? t(locale, 'refresh') : undefined}
+          </Button>
         </Tooltip>
       </div>
 
-      {/* Stats Row */}
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic
-              title={<Text type="secondary">{t(locale, 'totalRequests')}</Text>}
-              value={stats.total_requests || 0}
-              prefix={<ThunderboltOutlined style={{ color: '#1677ff' }} />}
-              valueStyle={{ fontWeight: 700 }}
-            />
+          <Card bordered={false} style={{ borderRadius: 20, minHeight: 124 }}>
+            <Statistic title={<Text type="secondary">{t(locale, 'totalRequests')}</Text>} value={stats.total_requests || 0} prefix={<ThunderboltOutlined style={{ color: '#1677ff' }} />} valueStyle={{ fontWeight: 700 }} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic
-              title={<Text type="secondary">{t(locale, 'successRate')}</Text>}
-              value={stats.success_rate || 0}
-              suffix="%"
-              precision={1}
-              valueStyle={{ fontWeight: 700, color: (stats.success_rate || 0) > 90 ? '#52c41a' : '#ff4d4f' }}
-              prefix={<SafetyCertificateOutlined style={{ color: (stats.success_rate || 0) > 90 ? '#52c41a' : '#ff4d4f' }} />}
-            />
+          <Card bordered={false} style={{ borderRadius: 20, minHeight: 124 }}>
+            <Statistic title={<Text type="secondary">{t(locale, 'successRate')}</Text>} value={stats.success_rate || 0} suffix="%" precision={1} valueStyle={{ fontWeight: 700, color: (stats.success_rate || 0) > 90 ? '#52c41a' : '#ff4d4f' }} prefix={<SafetyCertificateOutlined style={{ color: (stats.success_rate || 0) > 90 ? '#52c41a' : '#ff4d4f' }} />} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic
-              title={<Text type="secondary">{t(locale, 'avgLatency')}</Text>}
-              value={Math.round(stats.avg_latency_ms || 0)}
-              suffix="ms"
-              valueStyle={{ fontWeight: 700 }}
-              prefix={<ClockCircleOutlined style={{ color: '#faad14' }} />}
-            />
+          <Card bordered={false} style={{ borderRadius: 20, minHeight: 124 }}>
+            <Statistic title={<Text type="secondary">{t(locale, 'avgLatency')}</Text>} value={Math.round(stats.avg_latency_ms || 0)} suffix="ms" valueStyle={{ fontWeight: 700 }} prefix={<ClockCircleOutlined style={{ color: '#faad14' }} />} />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic
-              title={<Text type="secondary">{t(locale, 'activePlatforms')}</Text>}
-              value={stats.active_platforms || 0}
-              suffix={`/ ${stats.total_platforms || 0}`}
-              valueStyle={{ fontWeight: 700 }}
-              prefix={<CloudServerOutlined style={{ color: '#722ed1' }} />}
-            />
+          <Card bordered={false} style={{ borderRadius: 20, minHeight: 124 }}>
+            <Statistic title={<Text type="secondary">{t(locale, 'activePlatforms')}</Text>} value={stats.active_platforms || 0} suffix={`/ ${stats.total_platforms || 0}`} valueStyle={{ fontWeight: 700 }} prefix={<CloudServerOutlined style={{ color: '#722ed1' }} />} />
           </Card>
         </Col>
       </Row>
 
-      {/* Token Usage Row */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic
-              title={<Text type="secondary">{t(locale, 'totalTokens')}</Text>}
-              value={formatTokenCount((stats.total_token_input || 0) + (stats.total_token_output || 0))}
-              prefix={<DollarOutlined style={{ color: '#13c2c2' }} />}
-              valueStyle={{ fontWeight: 700 }}
-            />
+          <Card bordered={false} style={{ borderRadius: 20, minHeight: 124 }}>
+            <Statistic title={<Text type="secondary">{t(locale, 'totalTokens')}</Text>} value={formatTokenCount((stats.total_token_input || 0) + (stats.total_token_output || 0))} prefix={<DollarOutlined style={{ color: '#13c2c2' }} />} valueStyle={{ fontWeight: 700 }} />
           </Card>
         </Col>
         <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic
-              title={<Text type="secondary">{t(locale, 'inputTokens')}</Text>}
-              value={formatTokenCount(stats.total_token_input || 0)}
-              prefix={<ArrowDownOutlined style={{ color: '#1677ff' }} />}
-              valueStyle={{ fontWeight: 700 }}
-            />
+          <Card bordered={false} style={{ borderRadius: 20, minHeight: 124 }}>
+            <Statistic title={<Text type="secondary">{t(locale, 'inputTokens')}</Text>} value={formatTokenCount(stats.total_token_input || 0)} prefix={<ArrowDownOutlined style={{ color: '#1677ff' }} />} valueStyle={{ fontWeight: 700 }} />
           </Card>
         </Col>
         <Col xs={24} sm={8}>
-          <Card bordered={false} style={{ borderRadius: 12 }}>
-            <Statistic
-              title={<Text type="secondary">{t(locale, 'outputTokens')}</Text>}
-              value={formatTokenCount(stats.total_token_output || 0)}
-              prefix={<ArrowUpOutlined style={{ color: '#52c41a' }} />}
-              valueStyle={{ fontWeight: 700 }}
-            />
+          <Card bordered={false} style={{ borderRadius: 20, minHeight: 124 }}>
+            <Statistic title={<Text type="secondary">{t(locale, 'outputTokens')}</Text>} value={formatTokenCount(stats.total_token_output || 0)} prefix={<ArrowUpOutlined style={{ color: '#52c41a' }} />} valueStyle={{ fontWeight: 700 }} />
           </Card>
         </Col>
       </Row>
 
-      {/* Balance Summary Row */}
-      {balances.length > 0 && (
-        <Card bordered={false} style={{ marginTop: 16, borderRadius: 12 }}
-          title={<Title level={5} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <WalletOutlined style={{ color: '#faad14' }} /> 余额概览
-          </Title>}
-        >
+      {balances.length > 0 ? (
+        <Card bordered={false} style={{ marginTop: 16, borderRadius: 20 }} title={<Title level={5} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><WalletOutlined style={{ color: '#faad14' }} />{locale === 'zh' ? '余额概览' : 'Balance Overview'}</Title>}>
           <Row gutter={[16, 16]}>
-            {balances.map((b: any) => (
-              <Col xs={24} sm={12} lg={8} key={b.platform_id || b.platform_name}>
-                <Card size="small" bordered={false} style={{ borderRadius: 8, background: isDark ? '#1a1a1a' : '#fafafa' }}>
+            {balances.map((item: any) => (
+              <Col xs={24} sm={12} lg={8} key={item.platform_id || item.platform_name}>
+                <Card size="small" bordered={false} style={{ borderRadius: 16, background: 'var(--ant-color-fill-alter)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <Text strong style={{ fontSize: 13 }}>{b.platform_name}</Text>
-                    <Text style={{ fontSize: 18, fontWeight: 700, color: (b.balance ?? 0) > 0 ? '#52c41a' : '#ff4d4f' }}>
-                      ${b.balance !== null && b.balance !== undefined ? Number(b.balance).toFixed(2) : '—'}
+                    <Text strong style={{ fontSize: 13 }}>{getPlatformDisplayName(item.platform_name)}</Text>
+                    <Text style={{ fontSize: 18, fontWeight: 700, color: (item.balance ?? 0) > 0 ? '#52c41a' : '#ff4d4f' }}>
+                      ${item.balance !== null && item.balance !== undefined ? Number(item.balance).toFixed(2) : '—'}
                     </Text>
                   </div>
-                  {b.total !== null && b.total !== undefined && b.total > 0 && (
-                    <Progress
-                      percent={Math.round(((b.used ?? 0) / b.total) * 100)}
-                      size="small"
-                      status={(b.used ?? 0) / b.total > 0.9 ? 'exception' : 'active'}
-                      format={() => `${Number(b.used ?? 0).toFixed(2)} / ${Number(b.total).toFixed(2)}`}
-                    />
-                  )}
+                  {item.total !== null && item.total !== undefined && item.total > 0 ? (
+                    <Progress percent={Math.round(((item.used ?? 0) / item.total) * 100)} size="small" status={(item.used ?? 0) / item.total > 0.9 ? 'exception' : 'active'} format={() => `${Number(item.used ?? 0).toFixed(2)} / ${Number(item.total).toFixed(2)}`} />
+                  ) : null}
                 </Card>
               </Col>
             ))}
           </Row>
         </Card>
-      )}
+      ) : null}
 
-      {/* Virtual Model Status */}
-      <Card
-        bordered={false}
-        style={{ marginTop: 20, borderRadius: 12 }}
-        title={<Title level={5} style={{ margin: 0 }}>{t(locale, 'proxyStatus')}</Title>}
-        extra={<Text type="secondary">{stats.total_proxies || 0} {t(locale, 'total')}</Text>}
-      >
+      <Card bordered={false} style={{ marginTop: 20, borderRadius: 20 }} title={<Title level={5} style={{ margin: 0 }}>{t(locale, 'proxyStatus')}</Title>} extra={<Text type="secondary">{stats.total_proxies || 0} {t(locale, 'total')}</Text>}>
         {proxies.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <ApiOutlined style={{ fontSize: 40, color: '#d9d9d9', marginBottom: 12 }} />
-            <br />
-            <Text type="secondary">{t(locale, 'noProxies')}</Text>
-          </div>
+          <Empty description={t(locale, 'noProxies')} />
         ) : (
           <Row gutter={[16, 16]}>
-            {proxies.map((p) => (
-              <Col xs={24} sm={12} lg={8} key={p.id}>
-                <Card
-                  size="small"
-                  bordered={false}
-                  style={{
-                    borderRadius: 8,
-                    background: isDark ? '#1a1a1a' : undefined,
-                  }}
-                >
+            {proxies.map((proxy) => (
+              <Col xs={24} sm={12} lg={8} key={proxy.id}>
+                <Card size="small" bordered={false} style={{ borderRadius: 16, background: 'var(--ant-color-fill-alter)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Tag color="purple" style={{ fontSize: 13, padding: '2px 10px', borderRadius: 4, fontFamily: 'monospace' }}>{p.name}</Tag>
+                    <Tag color="purple" style={{ fontSize: 13, padding: '2px 10px', borderRadius: 999, fontFamily: 'monospace' }}>{proxy.name}</Tag>
                     <Tag icon={<CheckCircleOutlined />} color="processing">Ready</Tag>
                   </div>
-                  {/* Per-proxy stats */}
-                  {p.stats && p.stats.total_requests > 0 ? (
-                    <div style={{
-                      marginTop: 10,
-                      paddingTop: 8,
-                      borderTop: `1px solid ${isDark ? '#333' : '#f0f0f0'}`,
-                      display: 'flex',
-                      gap: 16,
-                      flexWrap: 'wrap',
-                    }}>
-                      <StatItem label={t(locale, 'proxyRequests')} value={String(p.stats.total_requests)} />
-                      <StatItem label={t(locale, 'successRate')} value={`${p.stats.success_rate.toFixed(1)}%`} color={p.stats.success_rate > 90 ? '#52c41a' : '#ff4d4f'} />
-                      <StatItem label={t(locale, 'avgLatency')} value={`${p.stats.avg_latency_ms.toFixed(0)}ms`} />
-                      <StatItem label={t(locale, 'proxyTokens')} value={formatTokenCount(p.stats.total_token_input + p.stats.total_token_output)} />
+                  {proxy.stats && proxy.stats.total_requests > 0 ? (
+                    <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--ant-color-border-secondary)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                      <StatItem label={t(locale, 'proxyRequests')} value={String(proxy.stats.total_requests)} />
+                      <StatItem label={t(locale, 'successRate')} value={`${proxy.stats.success_rate.toFixed(1)}%`} color={proxy.stats.success_rate > 90 ? '#52c41a' : '#ff4d4f'} />
+                      <StatItem label={t(locale, 'avgLatency')} value={`${proxy.stats.avg_latency_ms.toFixed(0)}ms`} />
+                      <StatItem label={t(locale, 'proxyTokens')} value={formatTokenCount(proxy.stats.total_token_input + proxy.stats.total_token_output)} />
                     </div>
                   ) : (
                     <div style={{ marginTop: 8 }}>
@@ -297,67 +241,50 @@ export default function Dashboard() {
         )}
       </Card>
 
-      {/* Platform List with Stats */}
-      <Card
-        bordered={false}
-        style={{ marginTop: 20, borderRadius: 12 }}
-        title={<Title level={5} style={{ margin: 0 }}>{t(locale, 'platformList')}</Title>}
-      >
+      <Card bordered={false} style={{ marginTop: 20, borderRadius: 20 }} title={<Title level={5} style={{ margin: 0 }}>{t(locale, 'platformList')}</Title>}>
         {platforms.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <CloudServerOutlined style={{ fontSize: 40, color: '#d9d9d9', marginBottom: 12 }} />
-            <br />
-            <Text type="secondary">{t(locale, 'noPlatforms')}</Text>
-          </div>
+          <Empty description={t(locale, 'noPlatforms')} />
         ) : (
           <Row gutter={[16, 16]}>
-            {platforms.map((p: any) => {
-              const healthColor = p.auto_disabled ? '#ff4d4f' : (p.consecutive_fails > 0 ? '#faad14' : '#52c41a')
-              const healthIcon = p.auto_disabled ? <CloseCircleOutlined /> : (p.consecutive_fails > 0 ? <WarningOutlined /> : <CheckCircleOutlined />)
+            {platforms.map((platform) => {
+              const healthColor = platform.auto_disabled ? '#ff4d4f' : (platform.consecutive_fails && platform.consecutive_fails > 0 ? '#faad14' : '#52c41a')
+              const healthIcon = platform.auto_disabled ? <CloseCircleOutlined /> : (platform.consecutive_fails && platform.consecutive_fails > 0 ? <WarningOutlined /> : <CheckCircleOutlined />)
               return (
-              <Col xs={24} sm={12} lg={8} key={p.id}>
-                <Card size="small" bordered={false} hoverable style={{ borderRadius: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Badge color={healthColor} />
-                      <Text strong>{getPlatformDisplayName(p.name)}</Text>
+                <Col xs={24} sm={12} lg={8} key={platform.id}>
+                  <Card size="small" bordered={false} style={{ borderRadius: 16, background: 'var(--ant-color-fill-alter)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Badge color={healthColor} />
+                        <Text strong>{getPlatformDisplayName(platform.name)}</Text>
+                      </div>
+                      <Tag icon={healthIcon} color={platform.auto_disabled ? 'error' : (platform.consecutive_fails && platform.consecutive_fails > 0 ? 'warning' : 'success')}>
+                        {platform.auto_disabled ? (locale === 'zh' ? '禁用' : 'Disabled') : (platform.consecutive_fails && platform.consecutive_fails > 0 ? `${platform.consecutive_fails} fail` : (locale === 'zh' ? '正常' : 'Active'))}
+                      </Tag>
                     </div>
-                    <Tag icon={healthIcon} color={p.auto_disabled ? 'error' : (p.consecutive_fails > 0 ? 'warning' : 'success')}>
-                      {p.auto_disabled ? 'Disabled' : (p.consecutive_fails > 0 ? `${p.consecutive_fails} fail` : 'Active')}
-                    </Tag>
-                  </div>
-                  <div style={{ fontSize: 12, color: '#999', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {p.base_url}
-                  </div>
-                  {/* Balance info if available */}
-                  {p.balance !== null && p.balance !== undefined && Number(p.balance) > 0 && (
-                    <div style={{ marginTop: 4 }}>
-                      <Text style={{ fontSize: 12, color: '#52c41a' }}>${Number(p.balance).toFixed(2)}</Text>
+                    <div style={{ fontSize: 12, color: 'var(--ant-color-text-tertiary)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {platform.base_url}
                     </div>
-                  )}
-                  {/* Per-platform stats */}
-                  {p.stats && p.stats.total_requests > 0 ? (
-                    <div style={{
-                      marginTop: 8,
-                      paddingTop: 8,
-                      borderTop: `1px solid ${isDark ? '#333' : '#f0f0f0'}`,
-                      display: 'flex',
-                      gap: 16,
-                      flexWrap: 'wrap',
-                    }}>
-                      <StatItem label={t(locale, 'proxyRequests')} value={String(p.stats.total_requests)} />
-                      <StatItem label={t(locale, 'successRate')} value={`${p.stats.success_rate.toFixed(1)}%`} color={p.stats.success_rate > 90 ? '#52c41a' : '#ff4d4f'} />
-                      <StatItem label={t(locale, 'avgLatency')} value={`${p.stats.avg_latency_ms.toFixed(0)}ms`} />
-                      <StatItem label={t(locale, 'proxyTokens')} value={formatTokenCount(p.stats.total_token_input + p.stats.total_token_output)} />
-                    </div>
-                  ) : (
-                    <div style={{ marginTop: 6 }}>
-                      <Text type="secondary" style={{ fontSize: 12 }}>{t(locale, 'noRequests')}</Text>
-                    </div>
-                  )}
-                </Card>
-              </Col>
-            )})}
+                    {platform.balance !== null && platform.balance !== undefined && Number(platform.balance) > 0 ? (
+                      <div style={{ marginTop: 4 }}>
+                        <Text style={{ fontSize: 12, color: '#52c41a' }}>${Number(platform.balance).toFixed(2)}</Text>
+                      </div>
+                    ) : null}
+                    {platform.stats && platform.stats.total_requests > 0 ? (
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--ant-color-border-secondary)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                        <StatItem label={t(locale, 'proxyRequests')} value={String(platform.stats.total_requests)} />
+                        <StatItem label={t(locale, 'successRate')} value={`${platform.stats.success_rate.toFixed(1)}%`} color={platform.stats.success_rate > 90 ? '#52c41a' : '#ff4d4f'} />
+                        <StatItem label={t(locale, 'avgLatency')} value={`${platform.stats.avg_latency_ms.toFixed(0)}ms`} />
+                        <StatItem label={t(locale, 'proxyTokens')} value={formatTokenCount(platform.stats.total_token_input + platform.stats.total_token_output)} />
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 6 }}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>{t(locale, 'noRequests')}</Text>
+                      </div>
+                    )}
+                  </Card>
+                </Col>
+              )
+            })}
           </Row>
         )}
       </Card>

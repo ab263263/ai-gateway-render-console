@@ -9,6 +9,69 @@ interface AppContextType {
   setLocale: (l: Locale) => void
 }
 
+export type SurfaceTheme = {
+  appBg: string
+  panelBg: string
+  panelBgElevated: string
+  navBg: string
+  navRailBg: string
+  cardBg: string
+  cardBorder: string
+  strongBorder: string
+  textPrimary: string
+  textSecondary: string
+  textMuted: string
+  brand: string
+  brandSoft: string
+  success: string
+  warning: string
+  danger: string
+  shadow: string
+  shadowSoft: string
+}
+
+const lightSurfaceTheme: SurfaceTheme = {
+  appBg: '#f5f7fb',
+  panelBg: '#ffffff',
+  panelBgElevated: '#fcfcfd',
+  navBg: 'rgba(255,255,255,0.88)',
+  navRailBg: '#eef2f7',
+  cardBg: '#ffffff',
+  cardBorder: '#e6eaf2',
+  strongBorder: '#d8deea',
+  textPrimary: '#111827',
+  textSecondary: '#4b5563',
+  textMuted: '#94a3b8',
+  brand: '#2563eb',
+  brandSoft: 'rgba(37,99,235,0.10)',
+  success: '#16a34a',
+  warning: '#d97706',
+  danger: '#dc2626',
+  shadow: '0 16px 40px rgba(15, 23, 42, 0.08)',
+  shadowSoft: '0 6px 18px rgba(15, 23, 42, 0.06)',
+}
+
+const darkSurfaceTheme: SurfaceTheme = {
+  appBg: '#0b1020',
+  panelBg: '#111827',
+  panelBgElevated: '#0f172a',
+  navBg: 'rgba(11,16,32,0.86)',
+  navRailBg: 'rgba(148,163,184,0.08)',
+  cardBg: '#111827',
+  cardBorder: '#1f2937',
+  strongBorder: '#334155',
+  textPrimary: '#f8fafc',
+  textSecondary: '#cbd5e1',
+  textMuted: '#94a3b8',
+  brand: '#60a5fa',
+  brandSoft: 'rgba(96,165,250,0.16)',
+  success: '#4ade80',
+  warning: '#fbbf24',
+  danger: '#f87171',
+  shadow: '0 20px 48px rgba(2, 6, 23, 0.45)',
+  shadowSoft: '0 8px 24px rgba(2, 6, 23, 0.28)',
+}
+
 const AppContext = createContext<AppContextType>({
   themeMode: 'system',
   setThemeMode: () => {},
@@ -18,6 +81,7 @@ const AppContext = createContext<AppContextType>({
 })
 
 export const useAppContext = () => useContext(AppContext)
+export const getSurfaceTheme = (isDark: boolean) => isDark ? darkSurfaceTheme : lightSurfaceTheme
 
 function getSystemDark(): boolean {
   return window.matchMedia('(prefers-color-scheme: dark)').matches

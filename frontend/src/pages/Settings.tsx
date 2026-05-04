@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Card, Form, InputNumber, Input, Select, Button, message, Typography, Divider, Switch } from 'antd'
-import { SaveOutlined, DesktopOutlined, ControlOutlined, ThunderboltOutlined, SyncOutlined, DownloadOutlined } from '@ant-design/icons'
+import { Card, Form, InputNumber, Input, Select, Button, message, Typography, Divider, Grid, Space, theme } from 'antd'
+import { SaveOutlined, DesktopOutlined, ControlOutlined, ThunderboltOutlined, DownloadOutlined, SettingOutlined } from '@ant-design/icons'
 import { useAppContext } from '../ThemeContext'
 import { t } from '../i18n'
 import { getSettings, updateSettings, exportBackup } from '../api'
@@ -9,11 +9,16 @@ const { Title, Text } = Typography
 
 export default function Settings() {
   const [form] = Form.useForm()
-  const { locale, isDark } = useAppContext()
+  const { locale } = useAppContext()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const screens = Grid.useBreakpoint()
+  const isMobile = !screens.md
+  const { token } = theme.useToken()
 
-  useEffect(() => { loadSettings() }, [])
+  useEffect(() => {
+    loadSettings()
+  }, [])
 
   const loadSettings = async () => {
     setLoading(true)
@@ -55,89 +60,36 @@ export default function Settings() {
     { value: 'LatencyBased', label: t(locale, 'latencyBased') },
   ]
 
-  const sectionIcon = (color1: string, color2: string, icon: React.ReactNode) => (
-    <div style={{
-      width: 28, height: 28, borderRadius: 6,
-      background: `linear-gradient(135deg, ${color1}, ${color2})`,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    }}>
+  const sectionIcon = (icon: React.ReactNode) => (
+    <div
+      style={{
+        width: 30,
+        height: 30,
+        borderRadius: 10,
+        background: token.colorPrimaryBg,
+        color: token.colorPrimary,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      }}
+    >
       {icon}
     </div>
   )
 
-  const cardStyle: React.CSSProperties = {
-    borderRadius: 12,
-    border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
-    background: isDark ? 'rgba(255,255,255,0.02)' : '#fff',
-    marginBottom: 16,
-  }
-
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={5} style={{ margin: 0 }}>{t(locale, 'settings')}</Title>
-      </div>
-
-      <Form form={form} layout="vertical" onFinish={onSave}>
-        {/* Server Section */}
-        <Card style={cardStyle} styles={{ body: { padding: '16px 24px' } }} loading={loading}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            {sectionIcon('#1677ff', '#4096ff', <DesktopOutlined style={{ color: '#fff', fontSize: 14 }} />)}
-            <Title level={5} style={{ margin: 0 }}>{t(locale, 'serverSettings')}</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', marginBottom: 16, gap: 12, flexDirection: isMobile ? 'column' : 'row' }}>
+        <div>
+          <Title level={5} style={{ margin: 0 }}>{t(locale, 'settings')}</Title>
+          <div style={{ marginTop: 4 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {locale === 'zh' ? '统一管理服务监听、默认请求策略、连通性测试和备份导出。' : 'Manage server binding, default request policy, connectivity testing, and backups in one place.'}
+            </Text>
           </div>
-          <Form.Item name="admin_port" label={t(locale, 'adminPort')}
-            extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'adminPortDesc')}</Text>}>
-            <InputNumber min={1024} max={65535} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="host" label={t(locale, 'listenHost')}
-            extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'listenHostDesc')}</Text>}>
-            <Input placeholder="0.0.0.0" />
-          </Form.Item>
-          <Form.Item name="log_level" label={t(locale, 'logLevel')}
-            extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'logLevelDesc')}</Text>}>
-            <Select options={LOG_OPTIONS} />
-          </Form.Item>
-          <Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'settingsNote')}</Text>
-        </Card>
-
-        {/* Request Policy Section */}
-        <Card style={cardStyle} styles={{ body: { padding: '16px 24px' } }} loading={loading}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            {sectionIcon('#722ed1', '#9254de', <ControlOutlined style={{ color: '#fff', fontSize: 14 }} />)}
-            <Title level={5} style={{ margin: 0 }}>{t(locale, 'defaultSettings')}</Title>
-          </div>
-          <Form.Item name="lb_strategy" label={t(locale, 'lbStrategyDefault')}
-            extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'lbStrategyDefaultDesc')}</Text>}>
-            <Select options={LB_OPTIONS} />
-          </Form.Item>
-          <Form.Item name="max_retries" label={t(locale, 'maxRetries')}
-            extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'maxRetriesDesc')}</Text>}>
-            <InputNumber min={0} max={10} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="retry_backoff_ms" label={t(locale, 'retryBackoffMs')}
-            extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'retryBackoffMsDesc')}</Text>}>
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="request_timeout_secs" label={t(locale, 'requestTimeoutSecs')}
-            extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'requestTimeoutSecsDesc')}</Text>}>
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-        </Card>
-
-        {/* Test Connection Section */}
-        <Card style={cardStyle} styles={{ body: { padding: '16px 24px' } }} loading={loading}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            {sectionIcon('#13c2c2', '#36cfc9', <ThunderboltOutlined style={{ color: '#fff', fontSize: 14 }} />)}
-            <Title level={5} style={{ margin: 0 }}>{t(locale, 'testConnection')}</Title>
-          </div>
-          <Form.Item name="test_connection_timeout_secs" label={t(locale, 'testConnTimeoutSecs')}
-            extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'testConnTimeoutSecsDesc')}</Text>}>
-            <InputNumber min={1} max={120} style={{ width: '100%' }} />
-          </Form.Item>
-        </Card>
-
-        <Divider style={{ margin: '8px 0 16px' }} />
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        </div>
+        <Space direction={isMobile ? 'vertical' : 'horizontal'} style={isMobile ? { width: '100%' } : undefined}>
           <Button
             icon={<DownloadOutlined />}
             onClick={async () => {
@@ -145,24 +97,93 @@ export default function Settings() {
                 const data = await exportBackup()
                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
                 const url = URL.createObjectURL(blob)
-                const a = document.createElement('a')
-                a.href = url
-                a.download = `ai-gateway-backup-${new Date().toISOString().slice(0, 10)}.json`
-                a.click()
+                const anchor = document.createElement('a')
+                anchor.href = url
+                anchor.download = `ai-gateway-backup-${new Date().toISOString().slice(0, 10)}.json`
+                anchor.click()
                 URL.revokeObjectURL(url)
-                message.success('备份已下载')
+                message.success(locale === 'zh' ? '备份已下载' : 'Backup exported')
               } catch {
-                message.error('备份导出失败')
+                message.error(locale === 'zh' ? '备份导出失败' : 'Failed to export backup')
               }
             }}
-            style={{ borderRadius: 8 }}
+            block={isMobile}
           >
-            导出备份
+            {locale === 'zh' ? '导出备份' : 'Export Backup'}
           </Button>
-          <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} style={{ borderRadius: 8, minWidth: 120 }}>
+          <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} form="settings-form" block={isMobile}>
             {t(locale, 'save')}
           </Button>
-        </div>
+        </Space>
+      </div>
+
+      <Form id="settings-form" form={form} layout="vertical" onFinish={onSave}>
+        <Card style={{ marginBottom: 16, borderRadius: 24 }} styles={{ body: { padding: isMobile ? 16 : 20 } }} loading={loading}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            {sectionIcon(<DesktopOutlined />)}
+            <div>
+              <Text strong>{t(locale, 'serverSettings')}</Text>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {locale === 'zh' ? '控制管理端口、监听地址和日志级别。' : 'Configure admin port, host binding, and log verbosity.'}
+                </Text>
+              </div>
+            </div>
+          </div>
+          <Form.Item name="admin_port" label={t(locale, 'adminPort')} extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'adminPortDesc')}</Text>}>
+            <InputNumber min={1024} max={65535} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="host" label={t(locale, 'listenHost')} extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'listenHostDesc')}</Text>}>
+            <Input placeholder="0.0.0.0" />
+          </Form.Item>
+          <Form.Item name="log_level" label={t(locale, 'logLevel')} extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'logLevelDesc')}</Text>}>
+            <Select options={LOG_OPTIONS} />
+          </Form.Item>
+          <Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'settingsNote')}</Text>
+        </Card>
+
+        <Card style={{ marginBottom: 16, borderRadius: 24 }} styles={{ body: { padding: isMobile ? 16 : 20 } }} loading={loading}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            {sectionIcon(<ControlOutlined />)}
+            <div>
+              <Text strong>{t(locale, 'defaultSettings')}</Text>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {locale === 'zh' ? '定义默认负载策略、重试行为和请求超时时间。' : 'Define default load balancing, retry behavior, and request timeouts.'}
+                </Text>
+              </div>
+            </div>
+          </div>
+          <Form.Item name="lb_strategy" label={t(locale, 'lbStrategyDefault')} extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'lbStrategyDefaultDesc')}</Text>}>
+            <Select options={LB_OPTIONS} />
+          </Form.Item>
+          <Form.Item name="max_retries" label={t(locale, 'maxRetries')} extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'maxRetriesDesc')}</Text>}>
+            <InputNumber min={0} max={10} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="retry_backoff_ms" label={t(locale, 'retryBackoffMs')} extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'retryBackoffMsDesc')}</Text>}>
+            <InputNumber min={0} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="request_timeout_secs" label={t(locale, 'requestTimeoutSecs')} extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'requestTimeoutSecsDesc')}</Text>}>
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+        </Card>
+
+        <Card style={{ borderRadius: 24 }} styles={{ body: { padding: isMobile ? 16 : 20 } }} loading={loading}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            {sectionIcon(<ThunderboltOutlined />)}
+            <div>
+              <Text strong>{t(locale, 'testConnection')}</Text>
+              <div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {locale === 'zh' ? '调整模型连通性测试的超时时间。' : 'Adjust the timeout used when probing model connectivity.'}
+                </Text>
+              </div>
+            </div>
+          </div>
+          <Form.Item name="test_connection_timeout_secs" label={t(locale, 'testConnTimeoutSecs')} extra={<Text type="secondary" style={{ fontSize: 11 }}>{t(locale, 'testConnTimeoutSecsDesc')}</Text>}>
+            <InputNumber min={1} max={120} style={{ width: '100%' }} />
+          </Form.Item>
+        </Card>
       </Form>
     </div>
   )
