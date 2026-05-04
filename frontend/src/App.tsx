@@ -74,8 +74,9 @@ function NavChip({
         background: active ? brandSoft : 'transparent',
         color: active ? brand : textSecondary,
         minWidth: mobile ? 0 : 96,
-        flex: mobile ? 1 : 'unset',
-        height: mobile ? 58 : 42,
+        width: mobile ? '100%' : 'auto',
+        flex: mobile ? 'unset' : 'unset',
+        height: mobile ? 54 : 42,
         borderRadius: 14,
         cursor: 'pointer',
         display: 'flex',
@@ -83,16 +84,26 @@ function NavChip({
         justifyContent: 'center',
         flexDirection: mobile ? 'column' : 'row',
         gap: mobile ? 4 : 8,
-        padding: mobile ? '6px 4px' : '0 14px',
+        padding: mobile ? '6px 2px' : '0 14px',
         fontWeight: active ? 700 : 500,
-        fontSize: mobile ? 11 : 13,
+        fontSize: mobile ? 10 : 13,
         transition: 'all .2s ease',
         boxShadow: active ? 'inset 0 0 0 1px rgba(255,255,255,0.04)' : 'none',
       }}
       aria-current={active ? 'page' : undefined}
     >
       <span style={{ fontSize: mobile ? 16 : 15, color: active ? brand : textPrimary }}>{item.icon}</span>
-      <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: mobile ? 54 : 120 }}>
+      <span
+        style={{
+          whiteSpace: mobile ? 'normal' : 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          maxWidth: mobile ? '100%' : 120,
+          lineHeight: mobile ? '12px' : undefined,
+          textAlign: 'center',
+          wordBreak: mobile ? 'break-word' : 'normal',
+        }}
+      >
         {t(locale, item.label as any)}
       </span>
     </button>
@@ -129,7 +140,7 @@ export default function App() {
   const themeIcon = themeMode === 'dark' ? <MoonOutlined /> : themeMode === 'light' ? <SunOutlined /> : <DesktopOutlined />
 
   return (
-    <Layout style={{ minHeight: '100vh', background: surface.appBg }}>
+    <Layout style={{ minHeight: '100dvh', background: surface.appBg, overflow: 'visible' }}>
       <div
         style={{
           position: 'sticky',
@@ -241,7 +252,10 @@ export default function App() {
       <Content
         style={{
           flex: 1,
-          padding: isMobile ? '16px 16px 96px' : '24px',
+          minHeight: 0,
+          overflow: 'visible',
+          padding: isMobile ? '16px 16px 128px' : '24px',
+          paddingBottom: isMobile ? 'calc(128px + env(safe-area-inset-bottom, 0px))' : '24px',
           background: surface.appBg,
         }}
       >
@@ -266,7 +280,7 @@ export default function App() {
             position: 'fixed',
             left: 12,
             right: 12,
-            bottom: 12,
+            bottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
             zIndex: 30,
             padding: 8,
             borderRadius: 22,
@@ -274,8 +288,10 @@ export default function App() {
             background: surface.navBg,
             backdropFilter: 'blur(18px)',
             boxShadow: surface.shadow,
-            display: 'flex',
-            gap: 4,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+            rowGap: 6,
+            columnGap: 4,
           }}
         >
           {TAB_ITEMS.map((item) => (

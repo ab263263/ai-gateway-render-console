@@ -398,3 +398,63 @@
   - 推送到 `main`
   - 等待新一轮 `Build Render Deployment`
   - 再次检查线上 hash 是否从 `index-EEYzxJER.js` 切到新版本
+
+### 30. Render 构建回归已修复，线上版本与数据已恢复（2026-05-05 04:09）
+
+- **新增提交**:
+  - 本地提交：`64a07e5` `fix: resolve remaining render build regressions`
+  - 部署远端提交：`a673457` `fix: resolve remaining render build regressions`
+- **本轮重新定位的真实编译错误**（来自 `Build Render Deployment #25338788538` 完整日志）:
+  1. `src/proxy/handler.rs:475`
+     - `bytes::Bytes` 不实现 `Display`，`e.to_string()` 触发 `E0599`
+     - 已改为 `String::from_utf8_lossy(&e).to_string()`
+  2. `src/api/platform.rs:714`
+     - `trigger_health_check()` 传入了 `Arc<Arc<ProxyState>>`，触发 `E0308`
+     - 已把 `proxy_state.into_inner()` 改为 `proxy_state.get_ref().clone()`
+- **新一轮 GitHub Actions**:
+  - 运行号：`25340508866`
+  - 工作流：`Build Render Deployment`
+  - 结果：`success`
+  - 链接：`https://github.com/ab263263/ai-gateway-render-console/actions/runs/25340508866`
+- **线上版本验证**:
+  - 首页静态资源已从旧版 `index-EEYzxJER.js` 切换到新版 `index-uXtwWAnu.js`
+  - 新资源包中可检索到 `quickPool` 关键字，说明 UI 收口版已真正上线
+  - `/health` 返回正常
+  - `POST /api/platforms/health-check` 已可返回成功，说明新后端接口生效
+- **部署后数据状态**:
+  - 刚切换完成时线上 `platforms / proxies / models` 一度为空
+  - 已使用 `scripts/seed-render-data.js` 对 Render 线上重新执行恢复
+  - 最终复验结果：
+    - `platforms = 8`
+    - `models = 57`
+    - `proxies = 57`
+    - `stats.overview` 返回 `active_platforms = 8`、`active_proxies = 57`
+- **当前结论**:
+  - Render 构建已成功
+  - 新 UI 已上线
+  - 新后端修复已生效
+  - 中转数据已恢复，可继续做功能验收
+
+### 31. 后续主线与工程要求升级（2026-05-05 04:27）
+
+- **项目主线更新**:
+  - 接下来前端与后端都不是只做“能用”，而是继续做“抗卡顿、抗阻塞、可持续维护”的长期优化
+  - 前端要重点解决：移动端滚动锁死、按钮遮挡、长内容溢出、复杂页面交互阻塞、批量列表渲染压力
+  - 后端要重点解决：上游 502/503 透传体验差、平台健康检查与失败隔离不足、慢请求/批量测试对主流程的阻塞、恢复脚本与线上数据一致性
+- **性能与稳定性原则**:
+  - 前端默认按移动端优先验证：可滚动、可点击、不卡住、长列表可读、固定底栏不遮挡正文
+  - 后端默认按高可用思路推进：错误分层、超时控制、失败快速回退、平台降级、批量任务不拖死主线程
+  - 任何新功能都要考虑“坏情况下怎么退化”，而不是只考虑“正常时能跑”
+- **代码质量要求**:
+  - 继续保持代码干净、模块边界清晰、命名直接、少魔法值、少脏兮兮补丁式写法
+  - 前端组件要避免壳层样式散落和重复内联逻辑，逐步收口布局与交互约束
+  - 后端要减少脆弱 borrow/async/blocking 混写，优先保证接口职责清晰、日志可追踪、错误信息可定位
+- **顶级工程标准（作为后续默认约束）**:
+  - 先考虑可维护性，再考虑快速堆功能
+  - 先保证稳定退化，再做炫功能
+  - 改动时同步考虑：性能、可读性、错误处理、移动端体验、部署一致性、数据恢复路径
+  - 所有关键链路都要能被验证：本地构建、线上接口、移动端交互、部署后数据状态
+- **接下来执行方向**:
+  1. 继续清洗批量模型测试结果，按 502 / 503 / 401 / 403 分类处理上游问题
+  2. 推进移动端 UI 第二轮修正并上线验证
+  3. 逐步把前后端易卡段、易阻塞、易脏代码的部分系统化重构

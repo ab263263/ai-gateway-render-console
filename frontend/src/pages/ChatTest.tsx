@@ -669,9 +669,9 @@ export default function ChatTest() {
               {conversationHistory.length === 0 ? (
                 <Text type="secondary">{t(locale, 'noResponseYet')}</Text>
               ) : (
-                <Space direction="vertical" size={14} style={{ width: '100%' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: '100%' }}>
                   {conversationHistory.map((item) => (
-                    <div key={item.id} style={{ padding: 14, borderRadius: 16, background: item.role === 'assistant' ? surface.panelBgElevated : surface.brandSoft }}>
+                    <div key={item.id} style={{ padding: 14, borderRadius: 16, background: item.role === 'assistant' ? surface.panelBgElevated : surface.brandSoft, overflow: 'hidden' }}>
                       <div style={{ marginBottom: 8 }}>
                         <Text strong>{item.role === 'assistant' ? t(locale, 'assistantReply') : item.role === 'user' ? t(locale, 'userPrompt') : t(locale, 'systemPrompt')}</Text>
                         {item.model && <Text type="secondary"> · {item.model}</Text>}
@@ -679,7 +679,7 @@ export default function ChatTest() {
                       {item.role === 'assistant' ? <MarkdownMessage content={item.content} /> : <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>{item.content}</div>}
                     </div>
                   ))}
-                </Space>
+                </div>
               )}
             </Card>
 
