@@ -316,26 +316,85 @@
 
 **待推送到 GitHub + 触发 Render 部署**
 
+---
 
+## 2026-05-05
 
+### 25. UI 收口版已推送，等待 Render 新版本上线验证
 
+- **提交号**: `0165c4a`
+- **提交信息**: `feat: ship unified UI polish and render seed updates`
+- **已执行**:
+  - 已提交本轮前端 UI 收口与恢复脚本更新
+  - 已推送到 `origin/main`
+  - 已同步推送到 `deploy/main`
+- **本轮覆盖范围**:
+  - `frontend/src/App.tsx`
+  - `frontend/src/ThemeContext.tsx`
+  - `frontend/src/main.tsx`
+  - `frontend/src/api.ts`
+  - `frontend/src/i18n.ts`
+  - `frontend/src/pages/Logs.tsx`
+  - `frontend/src/pages/Proxies.tsx`
+  - `frontend/src/pages/Platforms.tsx`
+  - `frontend/src/pages/Models.tsx`
+  - `frontend/src/pages/ApiKeys.tsx`
+  - `frontend/src/pages/Dashboard.tsx`
+  - `frontend/src/pages/Settings.tsx`
+  - `frontend/src/pages/Checkin.tsx`
+  - `frontend/src/pages/ChatTest.tsx`
+  - `frontend/src/components/chat/MarkdownMessage.tsx`
+  - `scripts/seed-render-data.js`
 
+### 26. Render 构建触发状态
 
+- **GitHub Actions 运行号**: `25334659193`
+- **工作流**: `Build Render Deployment`
+- **当前状态**: `in_progress`
+- **检查链接**:
+  - `https://github.com/ab263263/ai-gateway-render-console/actions/runs/25334659193`
 
+### 27. 线上版本即时验证（部署尚未切换完成）
 
+- 当前访问首页仍命中旧静态资源：
+  - 线上 hash：`index-EEYzxJER.js`
+  - 本地新构建 hash：`index-uXtwWAnu.js`
+- 首页响应头显示：
+  - `last-modified: Sun, 03 May 2026 05:31:14 GMT`
+- 结论：
+  - 代码已推送
+  - Render 构建已触发
+  - 但此刻线上仍在提供旧前端静态产物，说明新部署尚未完成切换
 
+### 28. 本轮待继续验证项
 
+- [ ] 等 `25334659193` 构建完成并确认 `success`
+- [ ] 再次检查首页静态资源 hash 是否切换到新版本
+- [ ] 上线后抽查关键页面：Logs / Proxies / Platforms / Models / Settings / Checkin / Dashboard / ApiKeys
+- [ ] 若部署后线上数据丢失，优先恢复 `data/ai-gateway.db`；若无数据库文件，再用 `scripts/seed-render-data.js` 重建中转配置数据
 
+### 29. Render 部署失败根因已定位（待重推验证）
 
-
-
-
-
-
-
-
-
-
-
-
-
+- 通过下载 GitHub Actions `25334659193` 的完整日志，已拿到 Linux 下真实 Rust 编译错误，不再只是 exit code 101。
+- 已定位并修复 3 个直接导致 Render 构建失败的问题：
+  1. `src/api/platform.rs`
+     - `trigger_health_check()` 中错误使用 `ai_gateway::health::check_all_platforms(...)`
+     - 在 crate 内部应改为 `crate::health::check_all_platforms(...)`
+  2. `src/health.rs`
+     - `web::block` 返回值解包错误，导致 `platforms` 被推断成错误类型，继发 `status / id / base_url / api_key` 字段不存在报错
+     - 同时 `check_single_platform()` 把借用引用直接 move 进 `web::block`，触发 borrowed data escapes outside of function (`E0521`)
+     - 已改为：正确解包 `Ok(Ok(items))`，并传入 owned 的 `DbPool / Client / String`
+  3. `src/proxy/handler.rs`
+     - SSE `streaming(...).map_err(...)` 闭包缺少类型信息，触发 `E0282`
+     - 已为错误映射闭包补显式类型 `bytes::Bytes`
+- 额外确认：
+  - 本机 Windows 上 `cargo build` 的 `link.exe` 报错主要是本地 MSVC/SDK 环境问题，不等于 Render 根因
+  - Render 失败日志中的关键错误已经与上述 3 处源码问题对上
+- 当前状态：
+  - 修复代码已在本地工作区
+  - 尚未重新提交 / 推送 / 触发下一轮 Render 构建
+- 下一步：
+  - 提交这 3 处 Rust 修复
+  - 推送到 `main`
+  - 等待新一轮 `Build Render Deployment`
+  - 再次检查线上 hash 是否从 `index-EEYzxJER.js` 切到新版本

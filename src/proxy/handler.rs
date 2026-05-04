@@ -472,7 +472,7 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
                     }
                 }
             }
-        }).map(|r| r.map_err(|e| actix_web::error::ErrorInternalServerError(e.to_string()))))
+        }).map(|r| r.map_err(|e: bytes::Bytes| actix_web::error::ErrorInternalServerError(e.to_string()))))
 }
 
 fn classify_error(c: u16) -> ErrorType { match c { 429 => ErrorType::RateLimit, 408 => ErrorType::Timeout, s if s >= 500 => ErrorType::ServerError, _ => ErrorType::ConnectionError } }

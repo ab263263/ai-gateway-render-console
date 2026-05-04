@@ -711,7 +711,7 @@ pub async fn trigger_health_check(
 ) -> AppResult<HttpResponse> {
     let state = proxy_state.into_inner();
     tokio::spawn(async move {
-        ai_gateway::health::check_all_platforms(state).await;
+        crate::health::check_all_platforms(state).await;
     });
     Ok(HttpResponse::Accepted().json(serde_json::json!({
         "success": true,
