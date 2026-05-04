@@ -1,4 +1,5 @@
-const APP_HOST = process.env.HOST || '127.0.0.1';
+const RAW_HOST = process.env.HOST || '';
+const APP_HOST = !RAW_HOST || RAW_HOST === '0.0.0.0' || RAW_HOST === '::' ? '127.0.0.1' : RAW_HOST;
 const APP_PORT = process.env.PORT || '1994';
 const BASE_URL = process.env.AI_GATEWAY_BASE_URL || `http://${APP_HOST}:${APP_PORT}`;
 
