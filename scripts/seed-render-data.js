@@ -2,7 +2,21 @@ const APP_HOST = process.env.HOST || '127.0.0.1';
 const APP_PORT = process.env.PORT || '1994';
 const BASE_URL = process.env.AI_GATEWAY_BASE_URL || `http://${APP_HOST}:${APP_PORT}`;
 
-const AUTH_HEADER = process.env.AI_GATEWAY_BASIC_AUTH || '';
+function buildAuthHeader() {
+  if (process.env.AI_GATEWAY_BASIC_AUTH) {
+    return process.env.AI_GATEWAY_BASIC_AUTH;
+  }
+
+  const username = process.env.ADMIN_USERNAME || '';
+  const password = process.env.ADMIN_PASSWORD || '';
+  if (username && password) {
+    return `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`;
+  }
+
+  return '';
+}
+
+const AUTH_HEADER = buildAuthHeader();
 
 function logStep(message, extra) {
   if (typeof extra === 'undefined') {

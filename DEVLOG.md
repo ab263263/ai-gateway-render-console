@@ -458,3 +458,35 @@
   1. 继续清洗批量模型测试结果，按 502 / 503 / 401 / 403 分类处理上游问题
   2. 推进移动端 UI 第二轮修正并上线验证
   3. 逐步把前后端易卡段、易阻塞、易脏代码的部分系统化重构
+
+### 32. 移动端滚动与遮挡修复已上线（2026-05-05 04:39）
+
+- **部署提交**:
+  - `c1143eb` `fix: improve mobile layout and scroll stability`
+- **GitHub Actions**:
+  - `Build Render Deployment #25342412835`
+  - 结果：`success`
+- **本轮前端修复点**:
+  - `frontend/index.html`
+    - 去掉 `html/body/#root` 的全局 `overflow: hidden`
+    - 改为允许纵向滚动，保留横向禁滚，并开启触摸滚动
+  - `frontend/src/App.tsx`
+    - 根布局从 `100vh` 调整为 `100dvh`
+    - 增加移动端正文底部安全区留白，避免被底部导航压住
+    - 底部导航改为 5 列网格，缩小移动端按钮尺寸和文字占用，减少遮挡
+  - `frontend/src/pages/ChatTest.tsx`
+    - 聊天历史块去掉容易撑爆布局的写法，补充 `overflow: hidden`
+- **线上移动端复验结果**:
+  - 新静态资源已切换到：`index-BhkYD6Xr.js`
+  - 手机视口下页面样式已从 `bodyOverflowY=hidden` 变为 `bodyOverflowY=auto`
+  - 首页可实际滚动：`scrollY ≈ 1009.6`
+  - 聊天测试页可实际滚动：`scrollY = 1084`
+  - 说明“手机端无法上下滑动像卡死”这一类问题已被直接修掉
+- **仍需注意的问题**:
+  - Render 每次新部署后，线上 `platforms / proxies / models` 仍会再次清空
+  - 本轮部署完成后又发生一次空库，已再次执行 `scripts/seed-render-data.js` 恢复
+  - 恢复后复验：`platforms = 8`、`proxies = 57`、`stats.overview.active_proxies = 57`
+- **当前结论**:
+  - 移动端滚动锁死问题已上线修复
+  - 按钮遮挡和底部压内容问题已明显缓解
+  - 但“部署后数据被清空”仍是后端/持久化链路的 P0 问题，必须继续根治

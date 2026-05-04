@@ -50,9 +50,11 @@ fi
 if [ -n "$AI_GATEWAY_SEED_ON_BOOT" ] && [ "$AI_GATEWAY_SEED_ON_BOOT" = "1" ]; then
   echo "AI Gateway seed on boot enabled"
   if [ -n "$AI_GATEWAY_BASIC_AUTH" ]; then
-    echo "AI_GATEWAY_BASIC_AUTH detected; seeding with Authorization header"
+    echo "AI_GATEWAY_BASIC_AUTH detected; seeding with explicit Authorization header"
+  elif [ -n "$ADMIN_USERNAME" ] && [ -n "$ADMIN_PASSWORD" ]; then
+    echo "AI_GATEWAY_BASIC_AUTH not set; seeding will derive Basic Auth from ADMIN_USERNAME/ADMIN_PASSWORD"
   else
-    echo "AI_GATEWAY_BASIC_AUTH not set; attempting seed without Authorization header"
+    echo "No admin credentials found for seed; attempting seed without Authorization header"
   fi
 
   if node /app/scripts/seed-render-data.js; then
