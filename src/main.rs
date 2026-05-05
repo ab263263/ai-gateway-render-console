@@ -160,39 +160,44 @@ async fn main() -> std::io::Result<()> {
             .route("/v1/models", web::get().to(ai_gateway::proxy::handler::openai_list_models))
             .route("/v1/messages", web::post().to(ai_gateway::proxy::handler::anthropic_messages))
             .route("/health", web::get().to(|| async { HttpResponse::Ok().json(json!({"status": "ok"})) }))
-            .route("/ready", web::get().to(move || {
-                let db_pool = ready_db_pool.clone();
-                let db_path = ready_db_path.clone();
-                async move {
-                    let db_exists = db_path.exists();
-                    let (db_connected, platform_count, proxy_count, model_count) = match ai_gateway::db::get_conn(&db_pool) {
-                        Ok(conn) => {
-                            let platform_count: i64 = conn.query_row("SELECT COUNT(*) FROM platforms", [], |row| row.get(0)).unwrap_or(0);
-                            let proxy_count: i64 = conn.query_row("SELECT COUNT(*) FROM proxies", [], |row| row.get(0)).unwrap_or(0);
-                            let model_count: i64 = conn.query_row("SELECT COUNT(*) FROM models", [], |row| row.get(0)).unwrap_or(0);
-                            (true, platform_count, proxy_count, model_count)
-                        }
-                        Err(err) => {
-                            tracing::warn!(error = %err, "ready check failed to fetch db connection");
-                            (false, 0, 0, 0)
-                        }
-                    };
+            .route("/ready", web::get().to({
+                let ready_db_pool = ready_db_pool.clone();
+                let ready_db_path = ready_db_path.clone();
+                let is_boot_ready = is_boot_ready;
+                move || {
+                    let db_pool = ready_db_pool.clone();
+                    let db_path = ready_db_path.clone();
+                    async move {
+                        let db_exists = db_path.exists();
+                        let (db_connected, platform_count, proxy_count, model_count) = match ai_gateway::db::get_conn(&db_pool) {
+                            Ok(conn) => {
+                                let platform_count: i64 = conn.query_row("SELECT COUNT(*) FROM platforms", [], |row| row.get(0)).unwrap_or(0);
+                                let proxy_count: i64 = conn.query_row("SELECT COUNT(*) FROM proxies", [], |row| row.get(0)).unwrap_or(0);
+                                let model_count: i64 = conn.query_row("SELECT COUNT(*) FROM models", [], |row| row.get(0)).unwrap_or(0);
+                                (true, platform_count, proxy_count, model_count)
+                            }
+                            Err(err) => {
+                                tracing::warn!(error = %err, "ready check failed to fetch db connection");
+                                (false, 0, 0, 0)
+                            }
+                        };
 
-                    let ready = db_connected && db_exists && (is_boot_ready || platform_count > 0 || proxy_count > 0 || model_count > 0);
-                    let status = if ready { actix_web::http::StatusCode::OK } else { actix_web::http::StatusCode::SERVICE_UNAVAILABLE };
+                        let ready = db_connected && db_exists && (is_boot_ready || platform_count > 0 || proxy_count > 0 || model_count > 0);
+                        let status = if ready { actix_web::http::StatusCode::OK } else { actix_web::http::StatusCode::SERVICE_UNAVAILABLE };
 
-                    HttpResponse::build(status).json(json!({
-                        "status": if ready { "ready" } else { "degraded" },
-                        "checks": {
-                            "database": db_connected,
-                            "db_path": db_path,
-                            "db_exists": db_exists,
-                            "bootstrap_has_data": is_boot_ready,
-                            "platform_count": platform_count,
-                            "proxy_count": proxy_count,
-                            "model_count": model_count
-                        }
-                    }))
+                        HttpResponse::build(status).json(json!({
+                            "status": if ready { "ready" } else { "degraded" },
+                            "checks": {
+                                "database": db_connected,
+                                "db_path": db_path,
+                                "db_exists": db_exists,
+                                "bootstrap_has_data": is_boot_ready,
+                                "platform_count": platform_count,
+                                "proxy_count": proxy_count,
+                                "model_count": model_count
+                            }
+                        }))
+                    }
                 }
             }))
             .service(actix_files::Files::new("/", &static_dir).index_file("index.html"))

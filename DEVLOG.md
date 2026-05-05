@@ -567,3 +567,21 @@
   1. Render 上线后确认首页静态资源是否切到 `index-CzYur15y.js`
   2. 抽查 ChatTest 页面布局、折叠区和移动端滚动体验
   3. 顺带继续验证上一轮 `/ready` 与健康探测后端改动是否成功进入线上版本
+
+### 36. Render Rust 构建报错 E0507 已定位（2026-05-05 13:54）
+
+- **触发阶段**:
+  - Render Docker 构建 `cargo build --release`
+- **错误特征**:
+  - Rust `E0507`，核心是 `.route("/ready", web::get().to(...))` 里闭包/异步块对外层捕获变量的 move 方式不合法
+- **根因定位**:
+  - `src/main.rs`
+  - 之前 `/ready` 直接写成 `move || { ... async move { ... } }`，在 `HttpServer::new(move || { ... })` 这层里会对 `ready_db_pool` / `ready_db_path` 做不安全的跨层 move
+  - Windows 本地因为 `link.exe` 环境问题没给出真实 Rust 语义报错，但 Render Linux 日志已经把问题打到这里
+- **修复方式**:
+  - 把 `/ready` 路由改成块级捕获：
+    - 先在 `.to({ ... })` 外层克隆 `ready_db_pool` / `ready_db_path`
+    - 再在内部 `move ||` 中按请求粒度 clone
+  - 这样避免把外层环境直接 move 出 `HttpServer::new` 工厂闭包
+- **当前状态**:
+  - 源码修复已落地，本轮需要重新提交并推送触发新一轮 Render 构建验证
