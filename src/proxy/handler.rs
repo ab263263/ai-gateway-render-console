@@ -395,7 +395,7 @@ async fn handle_request(
     let et = last_error_type.clone();
     web::block(move || record_request_log(&db_log, None, None, None, Some(&px_name), Some(0), Some(total_latency), None, None, et.as_deref(), Some(&em), is_stream, api_key_name.as_deref())).await.ok();
 
-    Err(AppError::Internal(format!("All retries: {}", last_error.unwrap_or_default())))
+    Err(AppError::Upstream(format!("All retries exhausted: {}", last_error.unwrap_or_default())))
 }
 
 fn build_forward_request(unified: &UnifiedRequest, platform: &crate::models::platform::Platform, target_model: &str) -> (serde_json::Value, String) {

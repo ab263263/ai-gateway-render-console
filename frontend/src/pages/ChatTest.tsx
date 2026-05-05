@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Button,
   Card,
   Col,
+  Collapse,
+  Empty,
   Input,
   InputNumber,
   Row,
@@ -16,7 +18,6 @@ import {
   Grid,
   Segmented,
   Switch,
-  Divider,
   Modal,
 } from 'antd'
 import {
@@ -28,6 +29,10 @@ import {
   BugOutlined,
   SaveOutlined,
   ClearOutlined,
+  CodeOutlined,
+  MessageOutlined,
+  SettingOutlined,
+  DeploymentUnitOutlined,
 } from '@ant-design/icons'
 import { listPlatforms, fetchRemoteModels, probePlatformModel, runProxyChatCompletion, listProxies } from '../api'
 import { useAppContext, getSurfaceTheme } from '../ThemeContext'
@@ -35,6 +40,7 @@ import { t } from '../i18n'
 import MarkdownMessage from '../components/chat/MarkdownMessage'
 
 const { Text, Title, Paragraph } = Typography
+const { Panel } = Collapse
 
 const PRESETS_KEY = 'ai-gateway-playground-presets'
 const HISTORY_KEY = 'ai-gateway-playground-history'
@@ -134,6 +140,31 @@ export default function ChatTest() {
   const [compareModels, setCompareModels] = useState<string[]>([])
   const [compareResults, setCompareResults] = useState<CompareResult[]>([])
   const [compareLoading, setCompareLoading] = useState(false)
+  const [advancedPanels, setAdvancedPanels] = useState<string[]>(['request'])
+  const historyContainerRef = useRef<HTMLDivElement | null>(null)
+
+  const requestPreviewHeight = isMobile ? '28dvh' : 320
+  const historyPanelHeight = isMobile ? '48dvh' : 560
+  const responsePanelHeight = isMobile ? '34dvh' : 420
+  const comparePanelHeight = isMobile ? '24dvh' : 280
+  const scrollPanelStyle: React.CSSProperties = {
+    overflow: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehavior: 'contain',
+    paddingRight: 4,
+  }
+  const sectionCardStyle: React.CSSProperties = {
+    borderRadius: 24,
+    border: `1px solid ${surface.cardBorder}`,
+    boxShadow: surface.shadowSoft,
+    background: surface.cardBg,
+  }
+  const panelMutedStyle: React.CSSProperties = {
+    padding: isMobile ? '12px 14px' : '14px 16px',
+    borderRadius: 18,
+    background: surface.panelBg,
+    border: `1px solid ${surface.cardBorder}`,
+  }
 
   useEffect(() => {
     void loadPlatforms()
@@ -160,6 +191,16 @@ export default function ChatTest() {
     localStorage.setItem(PRESETS_KEY, JSON.stringify(presets))
   }, [presets])
 
+  useEffect(() => {
+    if (mode !== 'playground') return
+    const node = historyContainerRef.current
+    if (!node) return
+    node.scrollTo({
+      top: node.scrollHeight,
+      behavior: conversationHistory.length > 0 ? 'smooth' : 'auto',
+    })
+  }, [conversationHistory, mode])
+
   const loadPlatforms = async () => {
     setLoadingPlatforms(true)
     try {
@@ -177,7 +218,7 @@ export default function ChatTest() {
       setProxies(data)
       if (data?.length && !playgroundModel) {
         setPlaygroundModel(data[0].name)
-        setCompareModels([data[0].name].concat(data[1]?.name ? [data[1].name] : []))
+        setCompareModels(data[1]?.name ? [data[0].name, data[1].name] : [data[0].name])
       }
     } catch {
       // ignore
@@ -483,7 +524,7 @@ export default function ChatTest() {
   }
 
   const handleCompareModels = async () => {
-    const validModels = compareModels.filter(Boolean)
+    const validModels = [playgroundModel, ...compareModels].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index)
     const prompt = userPrompt.trim() || conversationHistory.filter(item => item.role === 'user').slice(-1)[0]?.content || ''
     if (validModels.length < 2 || !prompt) {
       message.warning(t(locale, 'compareModels'))
@@ -536,6 +577,16 @@ export default function ChatTest() {
     localStorage.removeItem(HISTORY_KEY)
   }
 
+  const chatActions = (
+    <Space wrap size={isMobile ? 8 : 10} style={{ width: '100%' }}>
+      <Button type="primary" icon={<SendOutlined />} onClick={handleRunPlayground} loading={playgroundLoading}>
+        {t(locale, 'runPlayground')}
+      </Button>
+      <Button icon={<ClearOutlined />} onClick={clearHistory}>{t(locale, 'clearHistory')}</Button>
+      <Button icon={<SaveOutlined />} onClick={() => setPresetModalOpen(true)}>{t(locale, 'savePreset')}</Button>
+    </Space>
+  )
+
   const batchColumns = [
     { title: t(locale, 'platforms'), dataIndex: 'platform', key: 'platform', width: 140 },
     { title: t(locale, 'modelId'), dataIndex: 'requested_model', key: 'requested_model', width: 220 },
@@ -564,42 +615,100 @@ export default function ChatTest() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', marginBottom: 16, gap: 12, flexDirection: isMobile ? 'column' : 'row' }}>
-        <div>
-          <Title level={5} style={{ margin: 0 }}>{t(locale, 'chatTest')}</Title>
-          <Text type="secondary">{mode === 'playground' ? t(locale, 'playgroundDesc') : t(locale, 'diagnosticsDesc')}</Text>
+      <Card style={{ ...sectionCardStyle, marginBottom: 16 }} styles={{ body: { padding: isMobile ? 16 : 20 } }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: 12, flexDirection: isMobile ? 'column' : 'row' }}>
+          <div>
+            <Title level={5} style={{ margin: 0 }}>{t(locale, 'chatTest')}</Title>
+            <div style={{ marginTop: 6 }}>
+              <Text type="secondary">{mode === 'playground' ? t(locale, 'playgroundDesc') : t(locale, 'diagnosticsDesc')}</Text>
+            </div>
+          </div>
+          <Segmented
+            value={mode}
+            onChange={(value) => setMode(value as PlaygroundMode)}
+            options={[
+              { value: 'playground', label: <Space size={6}><ThunderboltOutlined />{t(locale, 'playground')}</Space> },
+              { value: 'diagnostics', label: <Space size={6}><BugOutlined />{t(locale, 'diagnostics')}</Space> },
+            ]}
+            block={isMobile}
+          />
         </div>
-        <Segmented
-          value={mode}
-          onChange={(value) => setMode(value as PlaygroundMode)}
-          options={[
-            { value: 'playground', label: <Space size={6}><ThunderboltOutlined />{t(locale, 'playground')}</Space> },
-            { value: 'diagnostics', label: <Space size={6}><BugOutlined />{t(locale, 'diagnostics')}</Space> },
-          ]}
-          block={isMobile}
-        />
-      </div>
+      </Card>
 
       {mode === 'playground' ? (
         <Row gutter={[16, 16]}>
+          <Col xs={24} xl={15}>
+            <Card style={sectionCardStyle} styles={{ body: { padding: isMobile ? 16 : 20 } }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: 12, flexDirection: isMobile ? 'column' : 'row' }}>
+                  <div>
+                    <Space size={8} align="center">
+                      <MessageOutlined style={{ color: surface.brand }} />
+                      <Text strong>{t(locale, 'playground')}</Text>
+                    </Space>
+                    <div style={{ marginTop: 6 }}>
+                      <Text type="secondary">{t(locale, 'playgroundWorkbenchDesc')}</Text>
+                    </div>
+                  </div>
+                  {chatActions}
+                </div>
+
+                <div style={panelMutedStyle}>
+                  <Text strong>{t(locale, 'conversationHistory')}</Text>
+                  <div style={{ marginTop: 10 }}>
+                    {conversationHistory.length === 0 ? (
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t(locale, 'playgroundEmpty')} />
+                    ) : (
+                      <div ref={historyContainerRef} style={{ ...scrollPanelStyle, display: 'flex', flexDirection: 'column', gap: 14, width: '100%', maxHeight: historyPanelHeight }}>
+                        {conversationHistory.map((item) => (
+                          <div key={item.id} style={{ padding: 14, borderRadius: 16, background: item.role === 'assistant' ? surface.panelBgElevated : surface.brandSoft, overflow: 'hidden', flexShrink: 0 }}>
+                            <div style={{ marginBottom: 8 }}>
+                              <Text strong>{item.role === 'assistant' ? t(locale, 'assistantReply') : item.role === 'user' ? t(locale, 'userPrompt') : t(locale, 'systemPrompt')}</Text>
+                              {item.model && <Text type="secondary"> · {item.model}</Text>}
+                            </div>
+                            {item.role === 'assistant' ? <MarkdownMessage content={item.content} /> : <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>{item.content}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={panelMutedStyle}>
+                  <Space size={8} align="center">
+                    <SendOutlined style={{ color: surface.brand }} />
+                    <Text strong>{t(locale, 'responsePreview')}</Text>
+                  </Space>
+                  <div style={{ marginTop: 10 }}>
+                    {playgroundOutput ? (
+                      <div style={{ ...scrollPanelStyle, maxHeight: responsePanelHeight }}>
+                        <MarkdownMessage content={playgroundOutput} />
+                      </div>
+                    ) : <Text type="secondary">{t(locale, 'noResponseYet')}</Text>}
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </Col>
+
           <Col xs={24} xl={9}>
-            <Card style={{ borderRadius: 20 }}>
+            <Card style={sectionCardStyle} styles={{ body: { padding: isMobile ? 16 : 20 } }}>
               <Space direction="vertical" size={16} style={{ width: '100%' }}>
                 <div>
-                  <Text strong>{t(locale, 'selectModel')}</Text>
+                  <Space size={8} align="center">
+                    <DeploymentUnitOutlined style={{ color: surface.brand }} />
+                    <Text strong>{t(locale, 'playgroundModelSection')}</Text>
+                  </Space>
+                  <div style={{ marginTop: 6 }}>
+                    <Text type="secondary">{t(locale, 'playgroundModelSectionDesc')}</Text>
+                  </div>
                   <Select
                     showSearch
-                    mode="multiple"
-                    maxTagCount={2}
-                    style={{ width: '100%', marginTop: 8 }}
+                    style={{ width: '100%', marginTop: 10 }}
                     placeholder={t(locale, 'selectModel')}
-                    value={compareModels.length ? compareModels : playgroundModel ? [playgroundModel] : []}
+                    value={playgroundModel}
                     options={proxies.map((proxy: any) => ({ value: proxy.name, label: proxy.name }))}
-                    onChange={(value) => {
-                      const values = value as string[]
-                      setCompareModels(values)
-                      if (values[0]) setPlaygroundModel(values[0])
-                    }}
+                    onChange={(value) => setPlaygroundModel(value)}
                     filterOption={(input, option) => (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
                   />
                 </div>
@@ -614,98 +723,100 @@ export default function ChatTest() {
                   <Input.TextArea rows={6} value={userPrompt} onChange={(e) => setUserPrompt(e.target.value)} style={{ marginTop: 8 }} />
                 </div>
 
-                <Row gutter={12}>
-                  <Col span={12}>
-                    <Text strong>{t(locale, 'maxTokens')}</Text>
-                    <InputNumber min={1} value={maxTokens} onChange={(v) => setMaxTokens(Number(v || 128))} style={{ width: '100%', marginTop: 8 }} />
-                  </Col>
-                  <Col span={12}>
-                    <Text strong>{t(locale, 'temperature')}</Text>
-                    <InputNumber min={0} max={2} step={0.1} value={temperature} onChange={(v) => setTemperature(Number(v ?? 0.7))} style={{ width: '100%', marginTop: 8 }} />
-                  </Col>
-                </Row>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 14, background: surface.brandSoft }}>
-                  <div>
-                    <Text strong>{t(locale, 'streamMode')}</Text>
-                    <div><Text type="secondary">{t(locale, 'liveOutput')}</Text></div>
-                  </div>
-                  <Switch checked={streamMode} onChange={setStreamMode} />
-                </div>
-
-                <Space wrap style={{ width: '100%' }}>
-                  <Button type="primary" icon={<SendOutlined />} onClick={handleRunPlayground} loading={playgroundLoading}>
-                    {t(locale, 'runPlayground')}
-                  </Button>
-                  <Button icon={<SaveOutlined />} onClick={() => setPresetModalOpen(true)}>{t(locale, 'savePreset')}</Button>
-                  <Button icon={<PlayCircleOutlined />} onClick={handleCompareModels} loading={compareLoading}>{t(locale, 'compareModels')}</Button>
-                  <Button icon={<ClearOutlined />} onClick={clearHistory}>{t(locale, 'clearHistory')}</Button>
-                  <Button icon={<CopyOutlined />} onClick={handleCopyRequest}>{t(locale, 'copyRequest')}</Button>
-                  <Button icon={<CopyOutlined />} onClick={handleCopyCurl}>{t(locale, 'copyCurl')}</Button>
-                </Space>
-
-                {presets.length > 0 && (
-                  <div>
-                    <Text strong>{t(locale, 'presets')}</Text>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                      {presets.map((preset) => (
-                        <Tag key={preset.id} style={{ cursor: 'pointer', padding: '4px 8px', borderRadius: 999 }} onClick={() => loadPreset(preset.id)}>
-                          {preset.name}
-                        </Tag>
-                      ))}
+                <div style={panelMutedStyle}>
+                  <Space size={8} align="center">
+                    <SettingOutlined style={{ color: surface.brand }} />
+                    <Text strong>{t(locale, 'advancedParams')}</Text>
+                  </Space>
+                  <div style={{ marginTop: 10 }}>
+                    <Row gutter={12}>
+                      <Col span={12}>
+                        <Text strong>{t(locale, 'maxTokens')}</Text>
+                        <InputNumber min={1} value={maxTokens} onChange={(v) => setMaxTokens(Number(v || 128))} style={{ width: '100%', marginTop: 8 }} />
+                      </Col>
+                      <Col span={12}>
+                        <Text strong>{t(locale, 'temperature')}</Text>
+                        <InputNumber min={0} max={2} step={0.1} value={temperature} onChange={(v) => setTemperature(Number(v ?? 0.7))} style={{ width: '100%', marginTop: 8 }} />
+                      </Col>
+                    </Row>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, padding: '12px 14px', borderRadius: 14, background: surface.brandSoft }}>
+                      <div>
+                        <Text strong>{t(locale, 'streamMode')}</Text>
+                        <div><Text type="secondary">{t(locale, 'liveOutput')}</Text></div>
+                      </div>
+                      <Switch checked={streamMode} onChange={setStreamMode} />
                     </div>
                   </div>
-                )}
+                </div>
+
+                <Collapse ghost activeKey={advancedPanels} onChange={(keys) => setAdvancedPanels(Array.isArray(keys) ? keys.map(String) : [String(keys)])}>
+                  <Panel header={t(locale, 'debugTools')} key="request">
+                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                      <div>
+                        <Space size={8} align="center">
+                          <CodeOutlined style={{ color: surface.brand }} />
+                          <Text strong>{t(locale, 'requestPreview')}</Text>
+                        </Space>
+                        <div style={{ ...scrollPanelStyle, maxHeight: requestPreviewHeight, marginTop: 10 }}>
+                          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: surface.textSecondary }}>{requestPreview}</pre>
+                        </div>
+                      </div>
+                      <Space wrap>
+                        <Button icon={<CopyOutlined />} onClick={handleCopyRequest}>{t(locale, 'copyRequest')}</Button>
+                        <Button icon={<CopyOutlined />} onClick={handleCopyCurl}>{t(locale, 'copyCurl')}</Button>
+                      </Space>
+                    </Space>
+                  </Panel>
+                  <Panel header={t(locale, 'compareModels')} key="compare">
+                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                      <Select
+                        mode="multiple"
+                        maxTagCount={2}
+                        style={{ width: '100%' }}
+                        placeholder={t(locale, 'compareModels')}
+                        value={compareModels}
+                        options={proxies.filter((proxy: any) => proxy.name !== playgroundModel).map((proxy: any) => ({ value: proxy.name, label: proxy.name }))}
+                        onChange={(value) => setCompareModels(value as string[])}
+                        filterOption={(input, option) => (option?.label as string)?.toLowerCase().includes(input.toLowerCase())}
+                      />
+                      <Button icon={<PlayCircleOutlined />} onClick={handleCompareModels} loading={compareLoading}>{t(locale, 'compareModels')}</Button>
+                      {compareResults.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {compareResults.map((item) => (
+                            <Card key={item.model} size="small" style={{ borderRadius: 16 }} title={<Text strong>{item.model}</Text>}>
+                              {item.error ? <Alert type="error" showIcon message={item.error} /> : (
+                                <div style={{ ...scrollPanelStyle, maxHeight: comparePanelHeight }}>
+                                  <MarkdownMessage content={item.output} />
+                                </div>
+                              )}
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+                    </Space>
+                  </Panel>
+                  <Panel header={t(locale, 'presets')} key="presets">
+                    {presets.length > 0 ? (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {presets.map((preset) => (
+                          <Tag key={preset.id} style={{ cursor: 'pointer', padding: '4px 8px', borderRadius: 999 }} onClick={() => loadPreset(preset.id)}>
+                            {preset.name}
+                          </Tag>
+                        ))}
+                      </div>
+                    ) : (
+                      <Text type="secondary">{t(locale, 'noPresetsYet')}</Text>
+                    )}
+                  </Panel>
+                </Collapse>
               </Space>
             </Card>
-          </Col>
-
-          <Col xs={24} xl={15}>
-            <Card title={t(locale, 'requestPreview')} style={{ borderRadius: 20, marginBottom: 16 }}>
-              <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, color: surface.textSecondary }}>{requestPreview}</pre>
-            </Card>
-
-            <Card title={t(locale, 'conversationHistory')} style={{ borderRadius: 20, marginBottom: 16 }}>
-              {conversationHistory.length === 0 ? (
-                <Text type="secondary">{t(locale, 'noResponseYet')}</Text>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, width: '100%' }}>
-                  {conversationHistory.map((item) => (
-                    <div key={item.id} style={{ padding: 14, borderRadius: 16, background: item.role === 'assistant' ? surface.panelBgElevated : surface.brandSoft, overflow: 'hidden' }}>
-                      <div style={{ marginBottom: 8 }}>
-                        <Text strong>{item.role === 'assistant' ? t(locale, 'assistantReply') : item.role === 'user' ? t(locale, 'userPrompt') : t(locale, 'systemPrompt')}</Text>
-                        {item.model && <Text type="secondary"> · {item.model}</Text>}
-                      </div>
-                      {item.role === 'assistant' ? <MarkdownMessage content={item.content} /> : <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>{item.content}</div>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-
-            <Card title={t(locale, 'responsePreview')} style={{ borderRadius: 20, marginBottom: compareResults.length > 0 ? 16 : 0 }}>
-              {playgroundOutput ? <MarkdownMessage content={playgroundOutput} /> : <Text type="secondary">{t(locale, 'noResponseYet')}</Text>}
-            </Card>
-
-            {compareResults.length > 0 && (
-              <Card title={t(locale, 'compareResult')} style={{ borderRadius: 20 }}>
-                <Row gutter={[16, 16]}>
-                  {compareResults.map((item) => (
-                    <Col xs={24} md={12} key={item.model}>
-                      <Card size="small" style={{ borderRadius: 16 }} title={<Text strong>{item.model}</Text>}>
-                        {item.error ? <Alert type="error" showIcon message={item.error} /> : <MarkdownMessage content={item.output} />}
-                      </Card>
-                    </Col>
-                  ))}
-                </Row>
-              </Card>
-            )}
           </Col>
         </Row>
       ) : (
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={12}>
-            <Card style={{ borderRadius: 20 }}>
+            <Card style={sectionCardStyle} styles={{ body: { padding: isMobile ? 16 : 20 } }}>
               <Space direction="vertical" size={16} style={{ width: '100%' }}>
                 <div>
                   <Text strong>{t(locale, 'selectPlatform')}</Text>
@@ -764,7 +875,7 @@ export default function ChatTest() {
           </Col>
 
           <Col xs={24} lg={12}>
-            <Card title={t(locale, 'platformModels')} style={{ borderRadius: 20 }}>
+            <Card title={t(locale, 'platformModels')} style={sectionCardStyle} styles={{ body: { padding: isMobile ? 16 : 20 } }}>
               {!selectedPlatform && <Text type="secondary">{t(locale, 'selectPlatform')}</Text>}
               {selectedPlatform && (
                 <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -794,7 +905,7 @@ export default function ChatTest() {
               )}
             </Card>
 
-            <Card title={t(locale, 'chatTestResult')} style={{ borderRadius: 20, marginTop: 16 }}>
+            <Card title={t(locale, 'chatTestResult')} style={{ ...sectionCardStyle, marginTop: 16 }} styles={{ body: { padding: isMobile ? 16 : 20 } }}>
               {!probeResult && <Text type="secondary">{t(locale, 'noRequests')}</Text>}
               {probeResult && (
                 <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -824,7 +935,7 @@ export default function ChatTest() {
           </Col>
 
           <Col xs={24}>
-            <Card title={t(locale, 'batchTestResult')} style={{ borderRadius: 20 }}>
+            <Card title={t(locale, 'batchTestResult')} style={sectionCardStyle} styles={{ body: { padding: isMobile ? 16 : 20 } }}>
               <Table columns={batchColumns as any} dataSource={batchResults} pagination={false} rowKey="key" locale={{ emptyText: t(locale, 'noRequests') }} scroll={{ x: 1200 }} />
             </Card>
           </Col>

@@ -45,6 +45,27 @@ pub fn list(pool: &DbPool) -> AppResult<Vec<Platform>> {
     rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
 }
 
+pub fn list_with_status(pool: &DbPool, statuses: &[PlatformStatus]) -> AppResult<Vec<Platform>> {
+    if statuses.is_empty() {
+        return list(pool);
+    }
+
+    let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    let placeholders = (0..statuses.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+    let sql = format!(
+        "SELECT {} FROM platforms WHERE status IN ({}) ORDER BY created_at",
+        SELECT_COLUMNS,
+        placeholders
+    );
+    let status_values = statuses
+        .iter()
+        .map(serde_json::to_string)
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(status_values.iter()), row_to_platform)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+}
+
 pub fn get(pool: &DbPool, id: &str) -> AppResult<Platform> {
     let conn = pool.get().map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
     let sql = format!("SELECT {} FROM platforms WHERE id = ?1", SELECT_COLUMNS);

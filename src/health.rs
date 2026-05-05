@@ -15,7 +15,15 @@ pub async fn check_all_platforms(state: Arc<ProxyState>) {
     let db = state.db.clone();
     let http_client = state.http_client.clone();
 
-    let platforms = match web::block(move || crate::db::platform::list(&db)).await {
+    let platforms = match web::block(move || {
+        crate::db::platform::list_with_status(
+            &db,
+            &[
+                crate::models::platform::PlatformStatus::Active,
+                crate::models::platform::PlatformStatus::Disabled,
+            ],
+        )
+    }).await {
         Ok(Ok(items)) => items,
         Ok(Err(e)) => {
             tracing::error!("health check: failed to list platforms: {}", e);
@@ -28,7 +36,7 @@ pub async fn check_all_platforms(state: Arc<ProxyState>) {
     };
 
     for platform in platforms {
-        if platform.status != crate::models::platform::PlatformStatus::Active {
+        if matches!(platform.status, crate::models::platform::PlatformStatus::Error) {
             continue;
         }
         let platform_id = platform.id.clone();
@@ -40,15 +48,18 @@ pub async fn check_all_platforms(state: Arc<ProxyState>) {
 
 async fn check_single_platform(db: DbPool, http_client: Client, platform_id: String, base_url: String, api_key: String) {
     let start = Instant::now();
-    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let url = format!("{}/models", base_url.trim_end_matches('/'));
 
-    let result = http_client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
+    let mut request = http_client
+        .get(&url)
         .header("Content-Type", "application/json")
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await;
+        .timeout(std::time::Duration::from_secs(10));
+
+    if !api_key.is_empty() {
+        request = request.header("Authorization", format!("Bearer {}", api_key));
+    }
+
+    let result = request.send().await;
 
     let latency_ms = start.elapsed().as_millis() as i64;
     let now = chrono::Utc::now().to_rfc3339();

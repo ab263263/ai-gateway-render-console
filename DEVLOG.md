@@ -490,3 +490,80 @@
   - 移动端滚动锁死问题已上线修复
   - 按钮遮挡和底部压内容问题已明显缓解
   - 但“部署后数据被清空”仍是后端/持久化链路的 P0 问题，必须继续根治
+
+### 33. 空库问题排查进展：已修掉两处高概率触发条件，但仍未完全根治（2026-05-05 04:52）
+
+- **本轮新增提交**:
+  - `9db7d22` `fix: derive seed auth from admin credentials`
+  - `e899121` `fix: use loopback for render seed self-check`
+- **本轮已确认的问题与修复**:
+  1. `scripts/seed-render-data.js` 之前只认 `AI_GATEWAY_BASIC_AUTH`
+     - 如果 Render 环境只配了 `ADMIN_USERNAME / ADMIN_PASSWORD`，自动 seed 没法带认证，请求管理接口时会失败
+     - 现在已改为：若没显式传 `AI_GATEWAY_BASIC_AUTH`，则自动用 `ADMIN_USERNAME:ADMIN_PASSWORD` 生成 Basic Auth
+  2. seed 自调用基址之前直接取 `HOST`
+     - Render 环境里 `HOST=0.0.0.0` 时，会把 `BASE_URL` 组成 `http://0.0.0.0:1994`
+     - 现在已改为：遇到 `0.0.0.0 / ::` 强制回落到 `127.0.0.1`
+- **部署验证**:
+  - `Build Render Deployment #25343274369` 成功（认证派生修复）
+  - `Build Render Deployment #25343455501` 成功（loopback 修复）
+- **实际结果**:
+  - 两轮新部署完成后，线上 `platforms / proxies / stats` 依然自动变成 0
+  - 说明“seed 完全不执行”这个判断还不够，至少还有一层更深的问题没解决
+  - 但手工执行同一份 `scripts/seed-render-data.js` 仍能立即恢复到：`platforms = 8`、`proxies = 57`
+- **当前阶段结论**:
+  - 自动恢复链路已经修掉了两处明显错误
+  - 但 Render 启动阶段的 seed 仍未真正跑通，或者执行结果未持久化
+- 下一步必须继续拿 Render 运行时真实启动日志，确认是：
+  1. entrypoint 没执行到 seed；
+  2. seed 执行失败但日志未拿到；
+  3. seed 执行成功但数据库文件不在持久化磁盘；
+  4. 应用实际读写的库路径与预期 `/data/ai-gateway.db` 仍不一致
+
+### 34. ChatTest 移动端滚动与后端健康探测补强（2026-05-05 05:34）
+
+- **本轮前端优化**:
+  - `frontend/src/pages/ChatTest.tsx`
+    - 为请求预览、对话历史、响应预览、模型对比结果增加独立滚动容器
+    - 移动端下为长内容设置高度上限，避免整页被单块内容撑爆
+    - 对话历史新增自动滚动到最新消息，减少操练场连续测试时的手动回拉
+- **本轮后端优化**:
+  - `src/health.rs`
+    - 健康探测从 `POST /chat/completions` 改为更轻量的 `GET /models`
+    - 不再只扫描 `Active` 平台，同时允许 `Disabled` 平台参与探测，给自动禁用平台恢复机会
+    - 保留对 `Error` 状态平台的跳过，避免明显异常平台反复打点
+  - `src/db/platform.rs`
+    - 新增 `list_with_status(...)`，给健康探测按状态筛选平台，减少后续散落查询逻辑
+  - `src/main.rs`
+    - 新增 `/ready` 就绪检查端点，返回数据库文件存在性、连接状态、platform/proxy/model 数量与启动期数据快照
+    - 将 `/ready` 设为免 Basic Auth，便于 Render/外部探针直接读就绪状态
+  - `src/error.rs` + `src/proxy/handler.rs`
+    - 新增 `AppError::Upstream`
+    - 上游多次重试耗尽后返回 502 语义，而不是继续混成 500 内部错误
+- **验证结果**:
+  - 前端 `npm --prefix frontend run build` 已通过
+  - Rust 后端在当前 Windows 环境下仍被本机 `link.exe` / MSVC 工具链异常阻断，现阶段无法用本地编译结果证明源码通过；从报错看仍是环境级链接问题，不是本轮新增业务代码语法错误
+- **下一步建议**:
+  1. 用 Linux / Render 环境继续验证 Rust 构建与 `/ready` 输出
+  2. 上线后重点核查：被自动禁用的平台是否能靠健康探测恢复
+  3. 后续可继续把 ChatTest 做分栏虚拟列表或懒渲染，进一步压低长对话卡顿
+
+### 35. ChatTest 正式操练场界面改版（2026-05-05 13:45）
+
+- **本轮前端目标**:
+  - 把 `frontend/src/pages/ChatTest.tsx` 从调试工具台收口为更正式的操练场界面
+  - 保留 `Playground + Diagnostics` 双模式，但让 `Playground` 成为主工作区，`Diagnostics` 弱化为巡检区
+- **本轮界面改动**:
+  - 页头改为正式控制台卡片风格，突出模式切换与说明文案
+  - `Playground` 改为左右分区：左侧会话与回复，右侧模型与参数配置
+  - 主模型选择改成单选；模型对比移动到折叠的“调试工具”区
+  - 请求预览、cURL、预设等能力改为次级信息层，不再抢主视觉
+  - 会话空状态补齐，整体文案更偏正式后台而不是临时调试页
+- **文案更新**:
+  - `frontend/src/i18n.ts` 新增操练场工作区、模型与参数、高级参数、调试工具、空状态、预设空态等词条
+- **构建结果**:
+  - `npm --prefix frontend run build` 通过
+  - 新静态资源 hash：`index-CzYur15y.js`
+- **待部署验证**:
+  1. Render 上线后确认首页静态资源是否切到 `index-CzYur15y.js`
+  2. 抽查 ChatTest 页面布局、折叠区和移动端滚动体验
+  3. 顺带继续验证上一轮 `/ready` 与健康探测后端改动是否成功进入线上版本

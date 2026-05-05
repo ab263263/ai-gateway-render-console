@@ -1,5 +1,6 @@
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer, HttpResponse, http::header};
+use serde_json::json;
 use actix_web::dev::Service;
 use actix_files as actix_files;
 use futures_util::future::LocalBoxFuture;
@@ -66,6 +67,26 @@ async fn main() -> std::io::Result<()> {
     let db_pool = ai_gateway::db::init_pool(&db_path)
         .expect("Failed to initialize database");
 
+    let boot_ready = match ai_gateway::db::get_conn(&db_pool) {
+        Ok(conn) => {
+            let platform_count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM platforms", [], |row| row.get(0))
+                .unwrap_or(0);
+            let proxy_count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM proxies", [], |row| row.get(0))
+                .unwrap_or(0);
+            let model_count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM models", [], |row| row.get(0))
+                .unwrap_or(0);
+            tracing::info!(platform_count, proxy_count, model_count, "database bootstrap snapshot");
+            platform_count > 0 || proxy_count > 0 || model_count > 0
+        }
+        Err(err) => {
+            tracing::error!(error = %err, "failed to inspect bootstrap database state");
+            false
+        }
+    };
+
     let http_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(app_config.defaults.request_timeout_secs))
         .build()
@@ -89,6 +110,9 @@ async fn main() -> std::io::Result<()> {
     let admin_port = app_config.server.admin_port;
     let admin_username = app_config.security.admin_username.clone();
     let admin_password = app_config.security.admin_password.clone();
+    let ready_db_pool = db_pool.clone();
+    let ready_db_path = db_path.clone();
+    let is_boot_ready = boot_ready;
 
     tracing::info!("Static dir: {:?}", static_dir);
     tracing::info!("Static dir exists: {}", static_dir.exists());
@@ -109,7 +133,7 @@ async fn main() -> std::io::Result<()> {
                 let admin_password = admin_password.clone();
                 move |req, srv| -> LocalBoxFuture<_> {
                     let path = req.path().to_string();
-                    let needs_admin_auth = !path.starts_with("/v1/") && path != "/health";
+                    let needs_admin_auth = !path.starts_with("/v1/") && path != "/health" && path != "/ready";
                     let authorized = admin_username.is_empty()
                         || admin_password.is_empty()
                         || is_admin_authorized(req.headers().get(header::AUTHORIZATION), &admin_username, &admin_password);
@@ -135,7 +159,42 @@ async fn main() -> std::io::Result<()> {
             .route("/v1/completions", web::post().to(ai_gateway::proxy::handler::openai_chat_completions))
             .route("/v1/models", web::get().to(ai_gateway::proxy::handler::openai_list_models))
             .route("/v1/messages", web::post().to(ai_gateway::proxy::handler::anthropic_messages))
-            .route("/health", web::get().to(|| async { HttpResponse::Ok().json(serde_json::json!({"status": "ok"})) }))
+            .route("/health", web::get().to(|| async { HttpResponse::Ok().json(json!({"status": "ok"})) }))
+            .route("/ready", web::get().to(move || {
+                let db_pool = ready_db_pool.clone();
+                let db_path = ready_db_path.clone();
+                async move {
+                    let db_exists = db_path.exists();
+                    let (db_connected, platform_count, proxy_count, model_count) = match ai_gateway::db::get_conn(&db_pool) {
+                        Ok(conn) => {
+                            let platform_count: i64 = conn.query_row("SELECT COUNT(*) FROM platforms", [], |row| row.get(0)).unwrap_or(0);
+                            let proxy_count: i64 = conn.query_row("SELECT COUNT(*) FROM proxies", [], |row| row.get(0)).unwrap_or(0);
+                            let model_count: i64 = conn.query_row("SELECT COUNT(*) FROM models", [], |row| row.get(0)).unwrap_or(0);
+                            (true, platform_count, proxy_count, model_count)
+                        }
+                        Err(err) => {
+                            tracing::warn!(error = %err, "ready check failed to fetch db connection");
+                            (false, 0, 0, 0)
+                        }
+                    };
+
+                    let ready = db_connected && db_exists && (is_boot_ready || platform_count > 0 || proxy_count > 0 || model_count > 0);
+                    let status = if ready { actix_web::http::StatusCode::OK } else { actix_web::http::StatusCode::SERVICE_UNAVAILABLE };
+
+                    HttpResponse::build(status).json(json!({
+                        "status": if ready { "ready" } else { "degraded" },
+                        "checks": {
+                            "database": db_connected,
+                            "db_path": db_path,
+                            "db_exists": db_exists,
+                            "bootstrap_has_data": is_boot_ready,
+                            "platform_count": platform_count,
+                            "proxy_count": proxy_count,
+                            "model_count": model_count
+                        }
+                    }))
+                }
+            }))
             .service(actix_files::Files::new("/", &static_dir).index_file("index.html"))
     })
     .bind(format!("{}:{}", host, admin_port))?
