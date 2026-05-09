@@ -68,6 +68,18 @@ pub struct DefaultsConfig {
     pub retry_backoff_ms: u64,
     pub request_timeout_secs: u64,
     pub test_connection_timeout_secs: u64,
+    /// 连接超时（建立连接的超时）
+    pub connect_timeout_secs: u64,
+    /// 读取超时（读取响应数据的超时）
+    pub read_timeout_secs: u64,
+    /// 写入超时（发送请求数据的超时）
+    pub write_timeout_secs: u64,
+    /// 流式响应超时（防止流式响应卡死）
+    pub stream_timeout_secs: u64,
+    /// 连接池最大空闲连接数
+    pub pool_max_idle_per_host: usize,
+    /// 连接池最大空闲时间（秒）
+    pub pool_idle_timeout_secs: u64,
 }
 
 /// Resolve a path relative to the executable's parent directory.
@@ -204,6 +216,13 @@ impl Default for AppConfig {
                 retry_backoff_ms: 500,
                 request_timeout_secs: 120,
                 test_connection_timeout_secs: 10,
+                // 稳定性优化：细化超时配置
+                connect_timeout_secs: 10,      // 连接超时 10 秒
+                read_timeout_secs: 120,        // 读取超时 120 秒
+                write_timeout_secs: 30,        // 写入超时 30 秒
+                stream_timeout_secs: 300,      // 流式响应超时 5 分钟
+                pool_max_idle_per_host: 32,    // 每个 host 最大空闲连接数
+                pool_idle_timeout_secs: 90,   // 空闲连接存活时间 90 秒
             },
         }
     }
@@ -292,6 +311,25 @@ impl AppConfig {
                         if let Some(v) = def.get("test_connection_timeout_secs").and_then(|v| v.as_integer()) {
                             config.defaults.test_connection_timeout_secs = v as u64;
                         }
+                        // 稳定性优化：读取新的超时和连接池配置
+                        if let Some(v) = def.get("connect_timeout_secs").and_then(|v| v.as_integer()) {
+                            config.defaults.connect_timeout_secs = v as u64;
+                        }
+                        if let Some(v) = def.get("read_timeout_secs").and_then(|v| v.as_integer()) {
+                            config.defaults.read_timeout_secs = v as u64;
+                        }
+                        if let Some(v) = def.get("write_timeout_secs").and_then(|v| v.as_integer()) {
+                            config.defaults.write_timeout_secs = v as u64;
+                        }
+                        if let Some(v) = def.get("stream_timeout_secs").and_then(|v| v.as_integer()) {
+                            config.defaults.stream_timeout_secs = v as u64;
+                        }
+                        if let Some(v) = def.get("pool_max_idle_per_host").and_then(|v| v.as_integer()) {
+                            config.defaults.pool_max_idle_per_host = v as usize;
+                        }
+                        if let Some(v) = def.get("pool_idle_timeout_secs").and_then(|v| v.as_integer()) {
+                            config.defaults.pool_idle_timeout_secs = v as u64;
+                        }
                     }
 
                     if let Ok(v) = std::env::var("HOST") { config.server.host = v; }
@@ -362,12 +400,17 @@ admin_username = "{}"
 admin_password = "{}"
 
 [defaults]
-
 lb_strategy = "{}"
 max_retries = {}
 retry_backoff_ms = {}
 request_timeout_secs = {}
 test_connection_timeout_secs = {}
+connect_timeout_secs = {}
+read_timeout_secs = {}
+write_timeout_secs = {}
+stream_timeout_secs = {}
+pool_max_idle_per_host = {}
+pool_idle_timeout_secs = {}
 "#,
             self.server.host,
             self.server.admin_port,
@@ -378,11 +421,16 @@ test_connection_timeout_secs = {}
             self.security.admin_username,
             self.security.admin_password,
             self.defaults.lb_strategy,
-
             self.defaults.max_retries,
             self.defaults.retry_backoff_ms,
             self.defaults.request_timeout_secs,
             self.defaults.test_connection_timeout_secs,
+            self.defaults.connect_timeout_secs,
+            self.defaults.read_timeout_secs,
+            self.defaults.write_timeout_secs,
+            self.defaults.stream_timeout_secs,
+            self.defaults.pool_max_idle_per_host,
+            self.defaults.pool_idle_timeout_secs,
         ))
     }
 }

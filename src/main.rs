@@ -88,7 +88,12 @@ async fn main() -> std::io::Result<()> {
     };
 
     let http_client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(app_config.defaults.request_timeout_secs))
+        // 稳定性优化：细化超时配置
+        .connect_timeout(std::time::Duration::from_secs(app_config.defaults.connect_timeout_secs))  // 连接超时
+        .timeout(std::time::Duration::from_secs(app_config.defaults.read_timeout_secs))          // 总超时（主要是读取超时）
+        .pool_max_idle_per_host(app_config.defaults.pool_max_idle_per_host)                    // 连接池配置
+        .pool_idle_timeout(Some(std::time::Duration::from_secs(app_config.defaults.pool_idle_timeout_secs)))  // 空闲连接超时
+        .tcp_keepalive(Some(std::time::Duration::from_secs(60)))                            // TCP keepalive
         .build()
         .expect("Failed to create HTTP client");
 

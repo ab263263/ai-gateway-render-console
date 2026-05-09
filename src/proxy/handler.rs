@@ -180,6 +180,7 @@ async fn handle_request(
     let max_retries = route.retry_policy.max_retries;
     let mut last_error: Option<String> = None;
     let mut last_error_type: Option<String> = None;
+    let mut error_details: Vec<serde_json::Value> = Vec::new();
     let start_total = Instant::now();
 
     for attempt in 0..=max_retries {
@@ -270,7 +271,8 @@ async fn handle_request(
                         let ak_name = api_key_name.clone();
                         web::block(move || record_request_log(&db_log, Some(&p_id), Some(&p_name), Some(&m_id), Some(&px_name), Some(200), Some(latency_ms), None, None, None, None, true, ak_name.as_deref())).await.ok();
 
-                        return Ok(handle_stream(resp).await);
+                        // 稳定性优化：传递 stream_timeout_secs 参数
+                        return Ok(handle_stream(resp, state.config.defaults.stream_timeout_secs).await);
                     }
                     let body = resp.bytes().await.map_err(|e| AppError::Internal(e.to_string()))?;
                     let raw: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
@@ -337,9 +339,24 @@ async fn handle_request(
 
                     last_error = Some(eb);
                     last_error_type = Some(et.clone());
+                    
+                    // Collect error details for structured response
+                    error_details.push(serde_json::json!({
+                        "platform": platform_name,
+                        "model": model_id_str,
+                        "error_type": et,
+                        "status_code": status_code,
+                        "attempt": attempt + 1,
+                        "message": eb.clone()
+                    }));
 
                     if should_retry(&classify_error(status.as_u16()), &route.retry_policy.retry_on_error) && attempt < max_retries {
-                        tokio::time::sleep(std::time::Duration::from_millis(route.retry_policy.backoff_ms * 2u64.pow(attempt as u32))).await;
+                        // 稳定性优化：添加抖动（jitter）避免 thundering herd
+                        let base_backoff = route.retry_policy.backoff_ms * 2u64.pow(attempt as u32);
+                        let jitter = rand::random::<u64>() % base_backoff;  // 随机抖动 0~base_backoff
+                        let backoff_with_jitter = base_backoff + jitter;
+                        tracing::info!("Retry attempt {}: waiting {}ms (base={}ms, jitter={}ms)", attempt + 1, backoff_with_jitter, base_backoff, jitter);
+                        tokio::time::sleep(std::time::Duration::from_millis(backoff_with_jitter)).await;
                         continue;
                     }
                     return Ok(HttpResponse::build(actix_web::http::StatusCode::from_u16(status.as_u16()).unwrap_or(actix_web::http::StatusCode::BAD_GATEWAY)).body(last_error.unwrap_or_default()));
@@ -379,10 +396,26 @@ async fn handle_request(
 
                 last_error = Some(err_msg);
                 last_error_type = Some("ConnectionError".to_string());
+                
+                // Collect error details for structured response
+                error_details.push(serde_json::json!({
+                    "platform": platform_name,
+                    "model": model_id_str,
+                    "error_type": "ConnectionError",
+                    "status_code": 0,
+                    "attempt": attempt + 1,
+                    "message": err_msg.clone()
+                }));
+                
                 if should_retry(&ErrorType::ConnectionError, &route.retry_policy.retry_on_error) && attempt < max_retries {
-                    tokio::time::sleep(std::time::Duration::from_millis(route.retry_policy.backoff_ms * 2u64.pow(attempt as u32))).await;
-                    continue;
-                }
+                        // 稳定性优化：添加抖动（jitter）避免 thundering herd
+                        let base_backoff = route.retry_policy.backoff_ms * 2u64.pow(attempt as u32);
+                        let jitter = rand::random::<u64>() % base_backoff;  // 随机抖动 0~base_backoff
+                        let backoff_with_jitter = base_backoff + jitter;
+                        tracing::info!("Retry attempt {} (connection error): waiting {}ms (base={}ms, jitter={}ms)", attempt + 1, backoff_with_jitter, base_backoff, jitter);
+                        tokio::time::sleep(std::time::Duration::from_millis(backoff_with_jitter)).await;
+                        continue;
+                    }
             }
         }
     }
@@ -395,7 +428,7 @@ async fn handle_request(
     let et = last_error_type.clone();
     web::block(move || record_request_log(&db_log, None, None, None, Some(&px_name), Some(0), Some(total_latency), None, None, et.as_deref(), Some(&em), is_stream, api_key_name.as_deref())).await.ok();
 
-    Err(AppError::Upstream(format!("All retries exhausted: {}", last_error.unwrap_or_default())))
+    Err(build_error_response(last_error.clone(), error_details))
 }
 
 fn build_forward_request(unified: &UnifiedRequest, platform: &crate::models::platform::Platform, target_model: &str) -> (serde_json::Value, String) {
@@ -411,15 +444,16 @@ fn build_forward_request(unified: &UnifiedRequest, platform: &crate::models::pla
 
 /// Stream handler: UTF-8 validates each upstream chunk, skips invalid bytes,
 /// sends a final SSE error event on upstream disconnect/timeout, then terminates.
-async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
+/// 稳定性优化：添加超时控制
+async fn handle_stream(resp: reqwest::Response, stream_timeout_secs: u64) -> HttpResponse {
+    use futures::StreamExt;
+    
     let s = resp.status();
     if !s.is_success() {
         return HttpResponse::build(
             actix_web::http::StatusCode::from_u16(s.as_u16()).unwrap_or(actix_web::http::StatusCode::BAD_GATEWAY)
         ).body(resp.text().await.unwrap_or_default());
     }
-
-    use futures::StreamExt;
 
     let stream = resp.bytes_stream().map(|r| match r {
         Ok(bytes) => {
@@ -450,11 +484,26 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
         }
     });
 
+    // 稳定性优化：添加超时控制，防止流式响应卡死
+    let timeout_stream = tokio_stream::StreamExt::timeout(
+        stream,
+        std::time::Duration::from_secs(stream_timeout_secs)
+    ).map(|r| match r {
+        Ok(Ok(bytes)) => Ok(bytes),
+        Ok(Err(e)) => Err(e),
+        Err(_) => {
+            // Timeout error
+            tracing::warn!("SSE stream timeout after {} seconds", stream_timeout_secs);
+            let event = format!("data: {{\"error\":\"timeout\",\"message\":\"Stream timeout after {} seconds\"}}\n\n", stream_timeout_secs);
+            Err(std::io::Error::new(std::io::ErrorKind::Other, event))
+        }
+    });
+
     HttpResponse::Ok()
         .content_type("text/event-stream")
         .insert_header(("Cache-Control", "no-cache"))
         .insert_header(("X-Accel-Buffering", "no"))
-        .streaming(stream.filter_map(|r| async move {
+        .streaming(timeout_stream.filter_map(|r| async move {
             match r {
                 // Forward valid, non-empty chunks.
                 Ok(bytes) if !bytes.is_empty() => Some(Ok(bytes)),
@@ -479,5 +528,49 @@ async fn handle_stream(resp: reqwest::Response) -> HttpResponse {
         }))
 }
 
-fn classify_error(c: u16) -> ErrorType { match c { 429 => ErrorType::RateLimit, 408 => ErrorType::Timeout, s if s >= 500 => ErrorType::ServerError, _ => ErrorType::ConnectionError } }
+fn classify_error(c: u16) -> ErrorType { 
+    match c { 
+        429 => ErrorType::RateLimit, 
+        408 => ErrorType::Timeout, 
+        s if s >= 500 => ErrorType::ServerError, 
+        _ => ErrorType::ConnectionError 
+    } 
+}
+
 fn should_retry(e: &ErrorType, r: &[ErrorType]) -> bool { r.contains(e) }
+
+/// Build structured error response for upstream failures
+fn build_error_response(last_error: Option<String>, error_details: Vec<serde_json::Value>) -> AppError {
+    let error_msg = last_error.unwrap_or_else(|| "Unknown error".to_string());
+    
+    // Try to parse as JSON, otherwise wrap as string
+    let error_json = match serde_json::from_str::<serde_json::Value>(&error_msg) {
+        Ok(mut json) => {
+            // Ensure it has error field
+            if json.get("error").is_none() {
+                json = json!({"error": json});
+            }
+            json
+        }
+        Err(_) => {
+            // Wrap plain text error
+            json!({
+                "error": {
+                    "message": error_msg,
+                    "type": "upstream_error"
+                }
+            })
+        }
+    };
+    
+    // Add debugging info
+    let enhanced_error = json!({
+        "error": "upstream_failed",
+        "message": "所有上游请求失败，请检查配置",
+        "details": error_details,
+        "suggestion": "1. 检查上游 API Key 是否有效\n2. 检查上游服务是否可用\n3. 增加更多备用上游",
+        "upstream_error": error_json
+    });
+    
+    AppError::Upstream(enhanced_error.to_string())
+}
