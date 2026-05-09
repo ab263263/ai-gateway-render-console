@@ -476,10 +476,10 @@ async fn handle_stream(resp: reqwest::Response, stream_timeout_secs: u64) -> Htt
             } else {
                 "stream_error"
             };
-            tracing::warn!("SSE upstream error ({etype}): {e}");
+            tracing::warn!("SSE upstream error ({}): {}", etype, e);
             // Emit SSE error event as final chunk, then end stream.
             let msg = e.to_string().replace('"', "\\\"");
-            let event = format!("data: {{\"error\":\"{etype}\",\"message\":\"{msg}\"}}\n\n");
+            let event = format!("data: {{\"error\":\"{}\",\"message\":\"{}\"}}\n\n", etype, msg);
             Err(std::io::Error::new(std::io::ErrorKind::Other, event))
         }
     });
