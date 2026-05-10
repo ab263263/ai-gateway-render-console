@@ -12,8 +12,6 @@ services:
     envVars:
       - key: HOST
         value: 0.0.0.0
-      - key: PORT
-        value: 1994
       - key: LOG_LEVEL
         value: info
       - key: SQL_DSN
