@@ -42,7 +42,6 @@ RUN chmod +x /app/docker-entrypoint.sh
 RUN mkdir -p /data /app/data
 
 ENV HOST=0.0.0.0
-ENV PORT=1994
 ENV SQL_DSN=sqlite:///data/ai-gateway.db
 ENV RUST_BACKTRACE=1
 ENV RUST_LOG=info
