@@ -10,6 +10,7 @@ use crate::models::route::ErrorType;
 use crate::models::stats::RequestStat;
 use crate::protocol::{openai, anthropic, types::UnifiedRequest};
 use crate::config::AppConfig;
+use serde_json::json;
 
 pub struct ProxyState {
     pub db: DbPool,
@@ -221,11 +222,8 @@ async fn handle_request(
         let mut req_builder = state.http_client.post(&forward_url)
             .header("Content-Type", "application/json");
 
-        // 流式请求：不设置超时，由 handle_stream 的 stream_timeout_secs 控制
-        // 非流式请求：使用配置的 request_timeout_secs
-        if is_stream {
-            req_builder = req_builder.timeout(None);
-        } else {
+        // 非流式请求：设置超时；流式请求：不设置超时，由 handle_stream 的 stream_timeout_secs 控制
+        if !is_stream {
             req_builder = req_builder.timeout(std::time::Duration::from_secs(state.config.defaults.request_timeout_secs));
         }
 
@@ -359,9 +357,9 @@ async fn handle_request(
 
                     last_error = Some(eb);
                     last_error_type = Some(et.clone());
-                    
+
                     // Collect error details for structured response
-                    error_details.push(serde_json::json!({
+                    error_details.push(json!({
                         "platform": platform_name,
                         "model": model_id_str,
                         "error_type": et,
@@ -373,7 +371,7 @@ async fn handle_request(
                     if should_retry(&classify_error(status.as_u16()), &route.retry_policy.retry_on_error) && attempt < max_retries {
                         // 稳定性优化：添加抖动（jitter）避免 thundering herd
                         let base_backoff = route.retry_policy.backoff_ms * 2u64.pow(attempt as u32);
-                        let jitter = rand::random::<u64>() % base_backoff;  // 随机抖动 0~base_backoff
+                        let jitter = rand::random::<u64>() % base_backoff;
                         let backoff_with_jitter = base_backoff + jitter;
                         tracing::info!("Retry attempt {}: waiting {}ms (base={}ms, jitter={}ms)", attempt + 1, backoff_with_jitter, base_backoff, jitter);
                         tokio::time::sleep(std::time::Duration::from_millis(backoff_with_jitter)).await;
@@ -425,9 +423,9 @@ async fn handle_request(
 
                 last_error = Some(err_msg);
                 last_error_type = Some("ConnectionError".to_string());
-                
+
                 // Collect error details for structured response
-                error_details.push(serde_json::json!({
+                error_details.push(json!({
                     "platform": platform_name,
                     "model": model_id_str,
                     "error_type": "ConnectionError",
@@ -435,11 +433,11 @@ async fn handle_request(
                     "attempt": attempt + 1,
                     "message": err_msg.clone()
                 }));
-                
+
                 if should_retry(&ErrorType::ConnectionError, &route.retry_policy.retry_on_error) && attempt < max_retries {
                         // 稳定性优化：添加抖动（jitter）避免 thundering herd
                         let base_backoff = route.retry_policy.backoff_ms * 2u64.pow(attempt as u32);
-                        let jitter = rand::random::<u64>() % base_backoff;  // 随机抖动 0~base_backoff
+                        let jitter = rand::random::<u64>() % base_backoff;
                         let backoff_with_jitter = base_backoff + jitter;
                         tracing::info!("Retry attempt {} (connection error): waiting {}ms (base={}ms, jitter={}ms)", attempt + 1, backoff_with_jitter, base_backoff, jitter);
                         tokio::time::sleep(std::time::Duration::from_millis(backoff_with_jitter)).await;
@@ -488,7 +486,7 @@ fn build_forward_request(unified: &UnifiedRequest, platform: &crate::models::pla
 /// 稳定性优化：添加超时控制
 async fn handle_stream(resp: reqwest::Response, stream_timeout_secs: u64) -> HttpResponse {
     use futures::StreamExt;
-    
+
     let s = resp.status();
     if !s.is_success() {
         return HttpResponse::build(
@@ -526,10 +524,11 @@ async fn handle_stream(resp: reqwest::Response, stream_timeout_secs: u64) -> Htt
     });
 
     // 稳定性优化：添加超时控制，防止流式响应卡死
+    let stream_timeout_secs = stream_timeout_secs;
     let timeout_stream = tokio_stream::StreamExt::timeout(
         stream,
         std::time::Duration::from_secs(stream_timeout_secs)
-    ).map(|r| match r {
+    ).map(move |r| match r {
         Ok(Ok(bytes)) => Ok(bytes),
         Ok(Err(e)) => Err(e),
         Err(_) => {
@@ -569,13 +568,13 @@ async fn handle_stream(resp: reqwest::Response, stream_timeout_secs: u64) -> Htt
         }))
 }
 
-fn classify_error(c: u16) -> ErrorType { 
-    match c { 
-        429 => ErrorType::RateLimit, 
-        408 => ErrorType::Timeout, 
-        s if s >= 500 => ErrorType::ServerError, 
-        _ => ErrorType::ConnectionError 
-    } 
+fn classify_error(c: u16) -> ErrorType {
+    match c {
+        429 => ErrorType::RateLimit,
+        408 => ErrorType::Timeout,
+        s if s >= 500 => ErrorType::ServerError,
+        _ => ErrorType::ConnectionError
+    }
 }
 
 fn should_retry(e: &ErrorType, r: &[ErrorType]) -> bool { r.contains(e) }
@@ -583,7 +582,7 @@ fn should_retry(e: &ErrorType, r: &[ErrorType]) -> bool { r.contains(e) }
 /// Build structured error response for upstream failures
 fn build_error_response(last_error: Option<String>, error_details: Vec<serde_json::Value>) -> AppError {
     let error_msg = last_error.unwrap_or_else(|| "Unknown error".to_string());
-    
+
     // Try to parse as JSON, otherwise wrap as string
     let error_json = match serde_json::from_str::<serde_json::Value>(&error_msg) {
         Ok(mut json) => {
@@ -603,7 +602,7 @@ fn build_error_response(last_error: Option<String>, error_details: Vec<serde_jso
             })
         }
     };
-    
+
     // Add debugging info
     let enhanced_error = json!({
         "error": "upstream_failed",
@@ -612,6 +611,6 @@ fn build_error_response(last_error: Option<String>, error_details: Vec<serde_jso
         "suggestion": "1. 检查上游 API Key 是否有效\n2. 检查上游服务是否可用\n3. 增加更多备用上游",
         "upstream_error": error_json
     });
-    
+
     AppError::Upstream(enhanced_error.to_string())
 }
