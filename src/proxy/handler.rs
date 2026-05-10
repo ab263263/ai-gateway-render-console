@@ -219,8 +219,15 @@ async fn handle_request(
         let (forward_body, forward_url) = build_forward_request(&unified, &platform, &model_id_str);
 
         let mut req_builder = state.http_client.post(&forward_url)
-            .timeout(std::time::Duration::from_secs(state.config.defaults.request_timeout_secs))
             .header("Content-Type", "application/json");
+
+        // 流式请求：不设置超时，由 handle_stream 的 stream_timeout_secs 控制
+        // 非流式请求：使用配置的 request_timeout_secs
+        if is_stream {
+            req_builder = req_builder.timeout(None);
+        } else {
+            req_builder = req_builder.timeout(std::time::Duration::from_secs(state.config.defaults.request_timeout_secs));
+        }
 
         if !api_key_for_request.is_empty() {
             match platform.platform_type {
@@ -237,6 +244,9 @@ async fn handle_request(
         let result = req_builder.json(&forward_body).send().await;
         state.selector.dec_connection(&route.id, &backend.id);
         let latency_ms = start.elapsed().as_millis() as i64;
+
+        // 详细日志：记录转发 URL 和请求体，方便排查
+        tracing::info!(target: "proxy", url = %forward_url, body = %serde_json::to_string(&forward_body).unwrap_or_default(), "Forwarding request");
 
         match result {
             Ok(resp) => {
@@ -306,6 +316,16 @@ async fn handle_request(
                     let status_code = status.as_u16() as i32;
                     let et = format!("{:?}", classify_error(status.as_u16()));
 
+                    // 详细日志：记录上游错误详情
+                    tracing::warn!(target: "proxy",
+                        status = status_code,
+                        error_type = %et,
+                        platform = %platform_name,
+                        model = %model_id_str,
+                        response = %eb,
+                        "Upstream request failed"
+                    );
+
                     // Record platform failure for health tracking
                     let db_health = state.db.clone();
                     let pid_health = backend.platform_id.clone();
@@ -363,6 +383,15 @@ async fn handle_request(
                 }
             }
             Err(e) => {
+                // 详细日志：记录连接错误详情
+                tracing::warn!(target: "proxy",
+                    error = %e,
+                    platform = %platform_name,
+                    model = %model_id_str,
+                    url = %forward_url,
+                    "Upstream connection error"
+                );
+
                 // Record platform failure for health tracking
                 let db_health = state.db.clone();
                 let pid_health = backend.platform_id.clone();
@@ -432,12 +461,24 @@ async fn handle_request(
 }
 
 fn build_forward_request(unified: &UnifiedRequest, platform: &crate::models::platform::Platform, target_model: &str) -> (serde_json::Value, String) {
+    let base = platform.base_url.trim_end_matches('/');
+    // 自动处理 base_url：如果不包含 /v1 路径段，则补全（兼容两种配置习惯）
+    // 用户配置 https://api.openai.com/v1      → 直接使用
+    // 用户配置 https://api.openai.com         → 自动补 /v1
+    // 用户配置 https://some-proxy.com/custom → 不补，保持原样
+    let openai_url = if base.contains("/v1/") || base.ends_with("/v1") {
+        format!("{}/chat/completions", base)
+    } else {
+        format!("{}/v1/chat/completions", base)
+    };
+    let anthropic_url = format!("{}/v1/messages", base);
+
     match platform.platform_type {
         crate::models::platform::PlatformType::Anthropic => {
-            (anthropic::to_request(unified, target_model), format!("{}/v1/messages", platform.base_url.trim_end_matches('/')))
+            (anthropic::to_request(unified, target_model), anthropic_url)
         }
         _ => {
-            (openai::to_request(unified, target_model), format!("{}/chat/completions", platform.base_url.trim_end_matches('/')))
+            (openai::to_request(unified, target_model), openai_url)
         }
     }
 }
