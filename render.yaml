@@ -31,7 +31,7 @@ services:
         value: "0"
       - key: MEMORY_CACHE_ENABLED
         value: "true"
-      - key: NEW_API_AUTO_BOOTSTRAP
+      - key: NEW_API_BOOTSTRAP
         value: "true"
       - key: NEW_API_BOOTSTRAP_ADMIN_USERNAME
         value: root
@@ -40,4 +40,6 @@ services:
       - key: NEW_API_BOOTSTRAP_ACCESS_TOKEN
         sync: false
       - key: NEW_API_BOOTSTRAP_DEFAULT_TOKEN
+        sync: false
+      - key: NEW_API_BOOTSTRAP_CHANNELS_JSON
         sync: false

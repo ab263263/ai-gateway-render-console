@@ -286,6 +286,11 @@ func InitResources() error {
 
 	model.CheckSetup()
 
+	if err := model.BootstrapFromEnvIfEnabled(); err != nil {
+		common.FatalLog("failed to bootstrap from environment: " + err.Error())
+		return err
+	}
+
 	// Initialize options, should after model.InitDB()
 	model.InitOptionMap()
 
