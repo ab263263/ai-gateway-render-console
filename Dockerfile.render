@@ -1,0 +1,16 @@
+FROM calciumion/new-api:latest
+
+WORKDIR /data
+
+ENV TZ=Asia/Shanghai
+ENV SQLITE_PATH=/data/new-api.db
+ENV LOG_DIR=/data/logs
+ENV ERROR_LOG_ENABLED=true
+ENV BATCH_UPDATE_ENABLED=true
+ENV STREAMING_TIMEOUT=300
+ENV RELAY_TIMEOUT=0
+ENV MEMORY_CACHE_ENABLED=true
+
+EXPOSE 3000
+
+CMD ["sh", "-c", "mkdir -p ${LOG_DIR:-/data/logs} && exec /new-api --log-dir ${LOG_DIR:-/data/logs}"]

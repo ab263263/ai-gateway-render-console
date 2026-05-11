@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: my-ai-gateway
+    runtime: docker
+    dockerfilePath: ./Dockerfile.render
+    plan: free
+    healthCheckPath: /api/status
+    autoDeploy: true
+    disk:
+      name: new-api-data
+      mountPath: /data
+      sizeGB: 10
+    envVars:
+      - key: SQLITE_PATH
+        value: /data/new-api.db
+      - key: LOG_DIR
+        value: /data/logs
+      - key: TZ
+        value: Asia/Shanghai
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: CRYPTO_SECRET
+        generateValue: true
+      - key: ERROR_LOG_ENABLED
+        value: "true"
+      - key: BATCH_UPDATE_ENABLED
+        value: "true"
+      - key: STREAMING_TIMEOUT
+        value: "300"
+      - key: RELAY_TIMEOUT
+        value: "0"
+      - key: MEMORY_CACHE_ENABLED
+        value: "true"
+      - key: NEW_API_AUTO_BOOTSTRAP
+        value: "true"
+      - key: NEW_API_BOOTSTRAP_ADMIN_USERNAME
+        value: root
+      - key: NEW_API_BOOTSTRAP_ADMIN_PASSWORD
+        sync: false
+      - key: NEW_API_BOOTSTRAP_ACCESS_TOKEN
+        sync: false
+      - key: NEW_API_BOOTSTRAP_DEFAULT_TOKEN
+        sync: false
