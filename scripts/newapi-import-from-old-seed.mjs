@@ -32,6 +32,10 @@ function hostnameFromUrl(rawUrl) {
   }
 }
 
+function normalizeOpenAIBaseUrl(rawUrl) {
+  return rawUrl.replace(/\/+$/, '').replace(/\/v1$/i, '');
+}
+
 function unique(items) {
   return [...new Set(items.filter(Boolean))];
 }
@@ -67,7 +71,7 @@ function toNewApiChannels(models) {
       key: group.apiKey,
       status: 1,
       name: `${host}-openai-compatible-${index + 1}`,
-      base_url: group.url,
+      base_url: normalizeOpenAIBaseUrl(group.url),
       models: modelNames.join(','),
       group: 'default',
       model_mapping: modelMapping,
