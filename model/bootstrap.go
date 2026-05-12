@@ -64,14 +64,17 @@ func BootstrapFromEnvIfEnabled() error {
 			return err
 		}
 	} else {
-		updates := map[string]interface{}{
-			"quota":  1000000000,
-			"status": common.UserStatusEnabled,
-			"role":   common.RoleRootUser,
-			"group":  "default",
+		hashedPassword, err := common.Password2Hash(password)
+		if err != nil {
+			return err
 		}
-		if user.GetAccessToken() == "" {
-			updates["access_token"] = accessToken
+		updates := map[string]interface{}{
+			"password":     hashedPassword,
+			"quota":        1000000000,
+			"status":       common.UserStatusEnabled,
+			"role":         common.RoleRootUser,
+			"group":        "default",
+			"access_token": accessToken,
 		}
 		if err := DB.Model(&User{}).Where("id = ?", user.Id).Updates(updates).Error; err != nil {
 			return err
@@ -94,11 +97,6 @@ func BootstrapFromEnvIfEnabled() error {
 		}
 		for _, ch := range payload.Channels {
 			if ch.Name == "" || ch.Key == "" || ch.Models == "" {
-				continue
-			}
-			var count int64
-			DB.Model(&Channel{}).Where("name = ?", ch.Name).Count(&count)
-			if count > 0 {
 				continue
 			}
 			baseURL := ch.BaseURL
@@ -133,6 +131,14 @@ func BootstrapFromEnvIfEnabled() error {
 			if channel.Weight == nil || *channel.Weight == 0 {
 				w := uint(100)
 				channel.Weight = &w
+			}
+			var existing Channel
+			if err := DB.Where("name = ?", ch.Name).First(&existing).Error; err == nil {
+				channel.Id = existing.Id
+				if err := DB.Model(&Channel{}).Where("id = ?", existing.Id).Updates(channel).Error; err != nil {
+					return err
+				}
+				continue
 			}
 			if err := channel.Insert(); err != nil {
 				return err
