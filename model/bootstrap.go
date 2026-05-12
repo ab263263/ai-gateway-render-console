@@ -89,13 +89,6 @@ func BootstrapFromEnvIfEnabled() error {
 		constant.Setup = true
 	}
 
-	if err := DB.Save(&Option{Key: "SelfUseModeEnabled", Value: "true"}).Error; err != nil {
-		return err
-	}
-	if err := DB.Save(&Option{Key: "DemoSiteEnabled", Value: "false"}).Error; err != nil {
-		return err
-	}
-
 	channelsJSON := os.Getenv("NEW_API_BOOTSTRAP_CHANNELS_JSON")
 	if channelsJSON != "" {
 		payload := bootstrapPayload{}
