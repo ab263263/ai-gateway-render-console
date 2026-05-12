@@ -8,7 +8,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 )
 
 type bootstrapChannel struct {
@@ -90,12 +89,10 @@ func BootstrapFromEnvIfEnabled() error {
 		constant.Setup = true
 	}
 
-	operation_setting.SelfUseModeEnabled = true
-	operation_setting.DemoSiteEnabled = false
-	if err := UpdateOption("SelfUseModeEnabled", "true"); err != nil {
+	if err := DB.Save(&Option{Key: "SelfUseModeEnabled", Value: "true"}).Error; err != nil {
 		return err
 	}
-	if err := UpdateOption("DemoSiteEnabled", "false"); err != nil {
+	if err := DB.Save(&Option{Key: "DemoSiteEnabled", Value: "false"}).Error; err != nil {
 		return err
 	}
 
