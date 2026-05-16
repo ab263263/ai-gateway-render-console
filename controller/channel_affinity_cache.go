@@ -2,6 +2,7 @@ package controller
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/service"
@@ -63,6 +64,20 @@ func GetChannelAffinityUsageCacheStats(c *gin.Context) {
 	ruleName := strings.TrimSpace(c.Query("rule_name"))
 	usingGroup := strings.TrimSpace(c.Query("using_group"))
 	keyFp := strings.TrimSpace(c.Query("key_fp"))
+
+	if ruleName == "" && keyFp == "" {
+		limit, _ := strconv.Atoi(strings.TrimSpace(c.Query("limit")))
+		stats := service.ListChannelAffinityUsageCacheStats(limit)
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "",
+			"data": gin.H{
+				"items": stats,
+				"count": len(stats),
+			},
+		})
+		return
+	}
 
 	if ruleName == "" {
 		c.JSON(http.StatusBadRequest, gin.H{

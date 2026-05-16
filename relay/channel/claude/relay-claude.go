@@ -127,6 +127,7 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 		Temperature:   textRequest.Temperature,
 		Tools:         claudeTools,
 	}
+	service.ApplyPromptCacheAutoKey(&textRequest)
 	if maxTokens := textRequest.GetMaxTokens(); maxTokens > 0 {
 		claudeRequest.MaxTokens = common.GetPointer(maxTokens)
 	}
@@ -431,6 +432,7 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 
 	claudeRequest.Prompt = ""
 	claudeRequest.Messages = claudeMessages
+	service.ApplyClaudeAutoCacheControl(&claudeRequest)
 	return &claudeRequest, nil
 }
 

@@ -81,6 +81,10 @@ func InitEnv() {
 	// Initialize variables from constants.go that were using environment variables
 	DebugEnabled = os.Getenv("DEBUG") == "true"
 	MemoryCacheEnabled = os.Getenv("MEMORY_CACHE_ENABLED") == "true"
+	PromptCacheAutoKeyEnabled = GetEnvOrDefaultBool("PROMPT_CACHE_AUTO_KEY_ENABLED", true)
+	ClaudeAutoCacheControlEnabled = GetEnvOrDefaultBool("CLAUDE_AUTO_CACHE_CONTROL_ENABLED", true)
+	ClaudeAutoCacheControlTTL = GetEnvOrDefaultString("CLAUDE_AUTO_CACHE_CONTROL_TTL", "1h")
+	ClaudeAutoCacheMinChars = GetEnvOrDefault("CLAUDE_AUTO_CACHE_MIN_CHARS", 4096)
 	IsMasterNode = os.Getenv("NODE_TYPE") != "slave"
 	NodeName = os.Getenv("NODE_NAME")
 	TLSInsecureSkipVerify = GetEnvOrDefaultBool("TLS_INSECURE_SKIP_VERIFY", false)

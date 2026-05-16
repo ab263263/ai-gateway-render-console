@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -703,10 +704,11 @@ func RecordChannelAffinity(c *gin.Context, channelID int) {
 }
 
 type ChannelAffinityUsageCacheStats struct {
-	RuleName            string `json:"rule_name"`
-	UsingGroup          string `json:"using_group"`
-	KeyFingerprint      string `json:"key_fp"`
-	CachedTokenRateMode string `json:"cached_token_rate_mode"`
+	RuleName            string  `json:"rule_name"`
+	UsingGroup          string  `json:"using_group"`
+	KeyFingerprint      string  `json:"key_fp"`
+	CachedTokenRateMode string  `json:"cached_token_rate_mode"`
+	HitRate             float64 `json:"hit_rate"`
 
 	Hit           int64 `json:"hit"`
 	Total         int64 `json:"total"`
@@ -773,11 +775,61 @@ func GetChannelAffinityUsageCacheStats(ruleName, usingGroup, keyFp string) Chann
 			KeyFingerprint: keyFp,
 		}
 	}
+	return buildChannelAffinityUsageCacheStats(ruleName, usingGroup, keyFp, v)
+}
+
+func ListChannelAffinityUsageCacheStats(limit int) []ChannelAffinityUsageCacheStats {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	cache := getChannelAffinityUsageCacheStatsCache()
+	keys, err := cache.Keys()
+	if err != nil || len(keys) == 0 {
+		return []ChannelAffinityUsageCacheStats{}
+	}
+
+	stats := make([]ChannelAffinityUsageCacheStats, 0, len(keys))
+	prefix := channelAffinityUsageCacheStatsNamespace + ":"
+	for _, key := range keys {
+		entryKey := strings.TrimPrefix(key, prefix)
+		parts := strings.Split(entryKey, "\n")
+		if len(parts) != 3 {
+			continue
+		}
+		v, found, err := cache.Get(entryKey)
+		if err != nil || !found {
+			continue
+		}
+		stats = append(stats, buildChannelAffinityUsageCacheStats(parts[0], parts[1], parts[2], v))
+	}
+
+	sort.Slice(stats, func(i, j int) bool {
+		if stats[i].LastSeenAt == stats[j].LastSeenAt {
+			return stats[i].RuleName < stats[j].RuleName
+		}
+		return stats[i].LastSeenAt > stats[j].LastSeenAt
+	})
+	if len(stats) > limit {
+		stats = stats[:limit]
+	}
+	return stats
+}
+
+func buildChannelAffinityUsageCacheStats(ruleName, usingGroup, keyFp string, v ChannelAffinityUsageCacheCounters) ChannelAffinityUsageCacheStats {
+	hitRate := 0.0
+	if v.Total > 0 {
+		hitRate = float64(v.Hit) / float64(v.Total)
+	}
 	return ChannelAffinityUsageCacheStats{
 		CachedTokenRateMode:  v.CachedTokenRateMode,
 		RuleName:             ruleName,
 		UsingGroup:           usingGroup,
 		KeyFingerprint:       keyFp,
+		HitRate:              hitRate,
 		Hit:                  v.Hit,
 		Total:                v.Total,
 		WindowSeconds:        v.WindowSeconds,

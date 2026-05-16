@@ -90,6 +90,10 @@ var EmailLoginAuthServerList = []string{
 
 var DebugEnabled bool
 var MemoryCacheEnabled bool
+var PromptCacheAutoKeyEnabled bool
+var ClaudeAutoCacheControlEnabled bool
+var ClaudeAutoCacheControlTTL string
+var ClaudeAutoCacheMinChars int
 
 var LogConsumeEnabled = true
 

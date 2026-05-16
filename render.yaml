@@ -31,6 +31,14 @@ services:
         value: "0"
       - key: MEMORY_CACHE_ENABLED
         value: "true"
+      - key: PROMPT_CACHE_AUTO_KEY_ENABLED
+        value: "true"
+      - key: CLAUDE_AUTO_CACHE_CONTROL_ENABLED
+        value: "true"
+      - key: CLAUDE_AUTO_CACHE_CONTROL_TTL
+        value: "1h"
+      - key: CLAUDE_AUTO_CACHE_MIN_CHARS
+        value: "4096"
       - key: NEW_API_BOOTSTRAP
         value: "true"
       - key: NEW_API_BOOTSTRAP_ADMIN_USERNAME

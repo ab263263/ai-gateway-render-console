@@ -102,4 +102,37 @@ func TestObserveChannelAffinityUsageCacheByRelayFormat_UnsupportedModeKeepsEmpty
 	require.EqualValues(t, 1, stats.Hit)
 	require.EqualValues(t, 25, stats.CachedTokens)
 	require.Equal(t, "", stats.CachedTokenRateMode)
+	require.Equal(t, 1.0, stats.HitRate)
+}
+
+func TestListChannelAffinityUsageCacheStats(t *testing.T) {
+	ruleName := fmt.Sprintf("rule_list_%d", time.Now().UnixNano())
+	usingGroup := "default"
+	keyFP := fmt.Sprintf("fp_list_%d", time.Now().UnixNano())
+	ctx := buildChannelAffinityStatsContextForTest(ruleName, usingGroup, keyFP)
+
+	usage := &dto.Usage{
+		PromptTokens:     120,
+		CompletionTokens: 30,
+		TotalTokens:      150,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens: 60,
+		},
+	}
+
+	ObserveChannelAffinityUsageCacheByRelayFormat(ctx, usage, types.RelayFormatOpenAI)
+	items := ListChannelAffinityUsageCacheStats(1000)
+
+	var found *ChannelAffinityUsageCacheStats
+	for i := range items {
+		if items[i].RuleName == ruleName && items[i].UsingGroup == usingGroup && items[i].KeyFingerprint == keyFP {
+			found = &items[i]
+			break
+		}
+	}
+	require.NotNil(t, found)
+	require.EqualValues(t, 1, found.Total)
+	require.EqualValues(t, 1, found.Hit)
+	require.EqualValues(t, 60, found.CachedTokens)
+	require.Equal(t, 1.0, found.HitRate)
 }
